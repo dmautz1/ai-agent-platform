@@ -1,0 +1,604 @@
+# AI Agent Template - Comprehensive .gitignore
+# For Python/FastAPI backend, Next.js frontend, Supabase, Docker, and AI/ML development
+
+# =============================================================================
+# ENVIRONMENT & SECRETS
+# =============================================================================
+# Environment files - NEVER commit these
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.staging
+.env.prod
+.envrc
+
+# API Keys and secrets
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+config/secrets/
+
+# Cursor rules and files
+.cursor/
+.specstory/
+tasks/
+
+# Supabase local development
+.supabase/
+
+# =============================================================================
+# PYTHON/FASTAPI BACKEND
+# =============================================================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff (if used)
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff (if used)
+instance/
+.webassets-cache
+
+# Scrapy stuff (if used)
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# pdm
+.pdm.toml
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# =============================================================================
+# NODE.JS/NEXT.JS FRONTEND
+# =============================================================================
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Grunt intermediate storage
+.grunt
+
+# Bower dependency directory
+bower_components
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled binary addons
+build/Release
+
+# Dependency directories
+jspm_packages/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint cache
+.stylelintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache
+.cache
+.parcel-cache
+
+# Next.js build output
+.next/
+out/
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby files
+.cache/
+public
+
+# Storybook build outputs
+.out
+.storybook-out
+storybook-static
+
+# Rollup.js default build output
+dist/
+
+# Uncomment the public line in if your project uses Gatsby and not Next.js
+# public
+
+# vuepress build output
+.vuepress/dist
+
+# vuepress v2.x temp and cache directory
+.temp
+.cache
+
+# Docusaurus cache and generated files
+.docusaurus
+
+# Serverless directories
+.serverless/
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS port file
+.tern-port
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+# yarn v2
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# =============================================================================
+# AI/ML SPECIFIC
+# =============================================================================
+# Model files
+*.pkl
+*.pickle
+*.joblib
+*.h5
+*.hdf5
+*.onnx
+*.pb
+*.pth
+*.pt
+*.safetensors
+
+# Large datasets
+data/
+datasets/
+*.csv
+*.json
+*.parquet
+*.arrow
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Weights & Biases
+wandb/
+
+# TensorBoard logs
+logs/
+tensorboard_logs/
+
+# Google AI/ML
+google-credentials.json
+service-account*.json
+
+# OpenAI cache
+.openai_cache/
+
+# Hugging Face cache
+.cache/huggingface/
+
+# =============================================================================
+# DOCKER & CONTAINERIZATION
+# =============================================================================
+# Docker
+Dockerfile.local
+docker-compose.override.yml
+.dockerignore
+
+# Docker volumes
+docker_volumes/
+
+# =============================================================================
+# LOGGING & MONITORING
+# =============================================================================
+# Log files
+*.log
+logs/
+log/
+*.log.*
+*.out
+
+# Application specific logs
+app.log
+error.log
+access.log
+debug.log
+application.log
+
+# Rotating log files
+*.log.1
+*.log.2
+*.log.gz
+
+# =============================================================================
+# TESTING
+# =============================================================================
+# Test outputs
+test-results/
+test-reports/
+coverage-reports/
+.coverage
+htmlcov/
+
+# Jest
+jest_coverage/
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+
+# =============================================================================
+# BUILD & DEPLOYMENT
+# =============================================================================
+# Build outputs
+build/
+dist/
+out/
+target/
+
+# Deployment files
+.vercel
+.netlify
+
+# Digital Ocean
+.do/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Kubernetes
+*.kubeconfig
+
+# =============================================================================
+# DATABASES & CACHE
+# =============================================================================
+# SQLite
+*.db
+*.sqlite
+*.sqlite3
+
+# Redis dump
+dump.rdb
+
+# PostgreSQL
+*.sql
+
+# Database backups
+backup/
+backups/
+*.backup
+*.dump
+
+# =============================================================================
+# IDE & EDITOR FILES
+# =============================================================================
+# Visual Studio Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+# Local History for Visual Studio Code
+.history/
+
+# Built Visual Studio Code Extensions
+*.vsix
+
+# PyCharm
+.idea/
+*.swp
+*.swo
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+[._]*.s[a-v][a-z]
+!*.svg
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# =============================================================================
+# OPERATING SYSTEM FILES
+# =============================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.tmp
+*.temp
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# =============================================================================
+# TEMPORARY & CACHE FILES
+# =============================================================================
+# General temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Package manager cache
+.npm/
+.yarn/
+.pnpm/
+
+# OS generated files
+*.DS_Store
+Thumbs.db
+
+# =============================================================================
+# PROJECT SPECIFIC
+# =============================================================================
+# Local development database
+local.db
+
+# Local uploads/media
+uploads/
+media/
+
+# Generated documentation
+docs/build/
+
+# Backup files
+*.bak
+*.backup
+
+# Archive files (unless needed)
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# =============================================================================
+# FUTURE DEVELOPMENT CONSIDERATIONS
+# =============================================================================
+# WebAssembly
+*.wasm
+
+# Rust (for future WASM integration)
+target/
+Cargo.lock
+
+# Go (for future microservices)
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# Java (for future enterprise integrations)
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+
+# Analytics and tracking
+analytics/
+metrics/
+telemetry/ 
