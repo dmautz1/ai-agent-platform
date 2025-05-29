@@ -1,14 +1,24 @@
 """
-Supabase authentication middleware for FastAPI.
-Provides user authentication and authorization with comprehensive logging.
+Supabase authentication middleware for the AI Agent Template.
+
+This module provides authentication functionality including:
+- JWT token validation
+- User authentication middleware
+- Protected route decorators
+- User information extraction
 """
 
-from fastapi import HTTPException, Depends
+import logging
+from typing import Optional, Dict, Any
+from datetime import datetime, timedelta
+
+from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Dict, Any, Optional
 import jwt
+from supabase import create_client, Client
+
+from config.environment import get_settings
 from database import get_supabase_client
-from config import get_settings
 from logging_system import get_security_logger, get_logger
 
 # Initialize loggers

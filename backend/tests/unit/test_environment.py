@@ -1,15 +1,22 @@
 """
-Unit tests for configuration management.
+Unit tests for environment configuration management.
 """
 
 import pytest
+import sys
 import os
+
+# Add the backend directory to the Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+
 from unittest.mock import patch, mock_open
 from pydantic import ValidationError
-from config import (
-    Environment, LogLevel, Settings,
-    get_settings, reload_settings, validate_required_settings,
-    get_logging_config, _parse_size
+from config.environment import (
+    EnvironmentConfig,
+    get_settings,
+    validate_config,
+    validate_required_settings,
+    get_logging_config
 )
 
 class TestEnvironmentEnum:
@@ -17,21 +24,21 @@ class TestEnvironmentEnum:
 
     def test_environment_values(self):
         """Test Environment enum values"""
-        assert Environment.development == "development"
-        assert Environment.staging == "staging"
-        assert Environment.production == "production"
-        assert Environment.testing == "testing"
+        assert EnvironmentConfig.development == "development"
+        assert EnvironmentConfig.staging == "staging"
+        assert EnvironmentConfig.production == "production"
+        assert EnvironmentConfig.testing == "testing"
 
 class TestLogLevelEnum:
     """Test LogLevel enumeration"""
 
     def test_log_level_values(self):
         """Test LogLevel enum values"""
-        assert LogLevel.debug == "DEBUG"
-        assert LogLevel.info == "INFO"
-        assert LogLevel.warning == "WARNING"
-        assert LogLevel.error == "ERROR"
-        assert LogLevel.critical == "CRITICAL"
+        assert EnvironmentConfig.debug == "DEBUG"
+        assert EnvironmentConfig.info == "INFO"
+        assert EnvironmentConfig.warning == "WARNING"
+        assert EnvironmentConfig.error == "ERROR"
+        assert EnvironmentConfig.critical == "CRITICAL"
 
 class TestSettings:
     """Test Settings configuration class"""
@@ -42,11 +49,11 @@ class TestSettings:
             'SUPABASE_URL': 'https://test-project.supabase.co',
             'SUPABASE_KEY': 'test-key'
         }, clear=True):
-            settings = Settings()
+            settings = EnvironmentConfig()
             
             assert settings.app_name == "AI Agent Template API"
             assert settings.app_version == "1.0.0"
-            assert settings.environment == Environment.development
+            assert settings.environment == EnvironmentConfig.development
             assert settings.debug is False
             assert settings.host == "0.0.0.0"
             assert settings.port == 8000
@@ -69,11 +76,11 @@ class TestSettings:
         }
         
         with patch.dict(os.environ, env_vars, clear=True):
-            settings = Settings()
+            settings = EnvironmentConfig()
             
             assert settings.app_name == 'Custom API'
             assert settings.app_version == '2.0.0'
-            assert settings.environment == Environment.production
+            assert settings.environment == EnvironmentConfig.production
             assert settings.debug is False
             assert settings.host == '127.0.0.1'
             assert settings.port == 9000
@@ -81,13 +88,13 @@ class TestSettings:
             assert settings.supabase_key == 'prod-key'
             assert settings.jwt_secret == 'super-secret-key'
             assert settings.google_adk_api_key == 'google-key'
-            assert settings.log_level == LogLevel.error
+            assert settings.log_level == EnvironmentConfig.error
 
     def test_settings_missing_required_fields(self):
         """Test Settings validation with missing required fields"""
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(ValidationError) as exc_info:
-                Settings()
+                EnvironmentConfig()
             
             error_str = str(exc_info.value)
             assert "supabase_url" in error_str
@@ -101,7 +108,7 @@ class TestSettings:
             'SUPABASE_KEY': 'test-key'
         }):
             with pytest.raises(ValidationError) as exc_info:
-                Settings()
+                EnvironmentConfig()
             assert "must start with https://" in str(exc_info.value)
         
         # Test invalid domain
@@ -110,7 +117,7 @@ class TestSettings:
             'SUPABASE_KEY': 'test-key'
         }):
             with pytest.raises(ValidationError) as exc_info:
-                Settings()
+                EnvironmentConfig()
             assert "must end with .supabase.co" in str(exc_info.value)
 
     def test_settings_invalid_port(self):
@@ -121,7 +128,7 @@ class TestSettings:
             'PORT': '0'  # Port must be >= 1
         }):
             with pytest.raises(ValidationError) as exc_info:
-                Settings()
+                EnvironmentConfig()
             assert "greater than or equal to 1" in str(exc_info.value)
 
     def test_settings_invalid_cors_origins(self):
@@ -132,7 +139,7 @@ class TestSettings:
             'ALLOWED_ORIGINS': 'invalid-origin,another-invalid'
         }):
             with pytest.raises(ValidationError) as exc_info:
-                Settings()
+                EnvironmentConfig()
             assert "Invalid CORS origin" in str(exc_info.value)
 
     def test_environment_validation(self):
@@ -142,8 +149,8 @@ class TestSettings:
             'SUPABASE_KEY': 'test-key',
             'ENVIRONMENT': 'DEVELOPMENT'  # Should be converted to lowercase
         }):
-            settings = Settings()
-            assert settings.environment == Environment.development
+            settings = EnvironmentConfig()
+            assert settings.environment == EnvironmentConfig.development
 
 class TestSettingsMethods:
     """Test Settings helper methods"""
@@ -158,7 +165,7 @@ class TestSettingsMethods:
     def test_get_cors_origins_default_development(self):
         """Test get_cors_origins with development defaults"""
         with patch.dict(os.environ, {**self.env_vars, 'ENVIRONMENT': 'development'}):
-            settings = Settings()
+            settings = EnvironmentConfig()
             origins = settings.get_cors_origins()
             
             assert 'http://localhost:3000' in origins
@@ -171,7 +178,7 @@ class TestSettingsMethods:
             **self.env_vars,
             'ALLOWED_ORIGINS': 'https://example.com,https://app.example.com'
         }):
-            settings = Settings()
+            settings = EnvironmentConfig()
             origins = settings.get_cors_origins()
             
             assert origins == ['https://example.com', 'https://app.example.com']
@@ -179,7 +186,7 @@ class TestSettingsMethods:
     def test_get_cors_origins_production(self):
         """Test get_cors_origins for production environment"""
         with patch.dict(os.environ, {**self.env_vars, 'ENVIRONMENT': 'production'}):
-            settings = Settings()
+            settings = EnvironmentConfig()
             origins = settings.get_cors_origins()
             
             assert 'https://yourdomain.com' in origins
@@ -188,7 +195,7 @@ class TestSettingsMethods:
     def test_get_trusted_hosts_default(self):
         """Test get_trusted_hosts with defaults"""
         with patch.dict(os.environ, self.env_vars):
-            settings = Settings()
+            settings = EnvironmentConfig()
             hosts = settings.get_trusted_hosts()
             
             assert hosts == ['*']
@@ -199,7 +206,7 @@ class TestSettingsMethods:
             **self.env_vars,
             'TRUSTED_HOSTS': 'example.com,api.example.com'
         }):
-            settings = Settings()
+            settings = EnvironmentConfig()
             hosts = settings.get_trusted_hosts()
             
             assert hosts == ['example.com', 'api.example.com']
@@ -208,14 +215,14 @@ class TestSettingsMethods:
         """Test environment checking methods"""
         # Test development
         with patch.dict(os.environ, {**self.env_vars, 'ENVIRONMENT': 'development'}):
-            settings = Settings()
+            settings = EnvironmentConfig()
             assert settings.is_development() is True
             assert settings.is_production() is False
             assert settings.is_testing() is False
         
         # Test production
         with patch.dict(os.environ, {**self.env_vars, 'ENVIRONMENT': 'production'}):
-            settings = Settings()
+            settings = EnvironmentConfig()
             assert settings.is_development() is False
             assert settings.is_production() is True
             assert settings.is_testing() is False
@@ -223,7 +230,7 @@ class TestSettingsMethods:
     def test_get_database_url(self):
         """Test get_database_url method"""
         with patch.dict(os.environ, self.env_vars):
-            settings = Settings()
+            settings = EnvironmentConfig()
             url = settings.get_database_url()
             
             assert url == "https://test-project.supabase.co/rest/v1/"
@@ -231,7 +238,7 @@ class TestSettingsMethods:
     def test_get_auth_url(self):
         """Test get_auth_url method"""
         with patch.dict(os.environ, self.env_vars):
-            settings = Settings()
+            settings = EnvironmentConfig()
             url = settings.get_auth_url()
             
             assert url == "https://test-project.supabase.co/auth/v1/"
@@ -239,7 +246,7 @@ class TestSettingsMethods:
 class TestSettingsGlobal:
     """Test global settings functions"""
 
-    @patch('config._settings', None)
+    @patch('config.environment.get_settings', None)
     def test_get_settings_singleton(self):
         """Test get_settings returns singleton instance"""
         with patch.dict(os.environ, {
@@ -251,7 +258,7 @@ class TestSettingsGlobal:
             
             assert settings1 is settings2
 
-    @patch('config._settings', None)
+    @patch('config.environment.get_settings', None)
     def test_reload_settings(self):
         """Test reload_settings creates new instance"""
         with patch.dict(os.environ, {
@@ -259,14 +266,14 @@ class TestSettingsGlobal:
             'SUPABASE_KEY': 'test-key'
         }):
             settings1 = get_settings()
-            settings2 = reload_settings()
+            settings2 = validate_config()
             
             assert settings1 is not settings2
 
     def test_validate_required_settings_success(self):
         """Test validate_required_settings with valid settings"""
-        with patch('config.get_settings') as mock_get_settings:
-            mock_settings = Settings(
+        with patch('config.environment.get_settings') as mock_get_settings:
+            mock_settings = EnvironmentConfig(
                 supabase_url='https://test-project.supabase.co',
                 supabase_key='test-key'
             )
@@ -277,8 +284,8 @@ class TestSettingsGlobal:
 
     def test_validate_required_settings_missing(self):
         """Test validate_required_settings with missing required fields"""
-        with patch('config.get_settings') as mock_get_settings:
-            mock_settings = Settings(
+        with patch('config.environment.get_settings') as mock_get_settings:
+            mock_settings = EnvironmentConfig(
                 supabase_url='https://test-project.supabase.co',
                 supabase_key='test-key'
             )
@@ -295,11 +302,11 @@ class TestLoggingConfig:
 
     def test_get_logging_config_basic(self):
         """Test get_logging_config with basic settings"""
-        with patch('config.get_settings') as mock_get_settings:
-            mock_settings = Settings(
+        with patch('config.environment.get_settings') as mock_get_settings:
+            mock_settings = EnvironmentConfig(
                 supabase_url='https://test-project.supabase.co',
                 supabase_key='test-key',
-                log_level=LogLevel.info,
+                log_level=EnvironmentConfig.info,
                 log_file=None
             )
             mock_get_settings.return_value = mock_settings
@@ -313,11 +320,11 @@ class TestLoggingConfig:
 
     def test_get_logging_config_with_file(self):
         """Test get_logging_config with file logging"""
-        with patch('config.get_settings') as mock_get_settings:
-            mock_settings = Settings(
+        with patch('config.environment.get_settings') as mock_get_settings:
+            mock_settings = EnvironmentConfig(
                 supabase_url='https://test-project.supabase.co',
                 supabase_key='test-key',
-                log_level=LogLevel.debug,
+                log_level=EnvironmentConfig.debug,
                 log_file='/var/log/app.log',
                 log_rotation=True,
                 log_max_size='5MB',
@@ -335,8 +342,8 @@ class TestLoggingConfig:
 
     def test_get_logging_config_no_rotation(self):
         """Test get_logging_config without log rotation"""
-        with patch('config.get_settings') as mock_get_settings:
-            mock_settings = Settings(
+        with patch('config.environment.get_settings') as mock_get_settings:
+            mock_settings = EnvironmentConfig(
                 supabase_url='https://test-project.supabase.co',
                 supabase_key='test-key',
                 log_file='/var/log/app.log',
@@ -387,7 +394,7 @@ class TestSettingsValidationEdgeCases:
                 'ENVIRONMENT': 'production',
                 'DEBUG': 'true'
             }):
-                settings = Settings()
+                settings = EnvironmentConfig()
                 assert settings.debug is True
                 # Should have logged a warning
                 mock_logger.warning.assert_called()
@@ -401,7 +408,7 @@ class TestSettingsValidationEdgeCases:
                 'ENVIRONMENT': 'production',
                 'PORT': '80'
             }):
-                settings = Settings()
+                settings = EnvironmentConfig()
                 assert settings.port == 80
                 # Should have logged a warning
                 mock_logger.warning.assert_called()
@@ -413,7 +420,7 @@ class TestSettingsValidationEdgeCases:
             'SUPABASE_KEY': 'test-key',
             'ALLOWED_ORIGINS': '*'
         }):
-            settings = Settings()
+            settings = EnvironmentConfig()
             origins = settings.get_cors_origins()
             assert origins == ['*']
 
@@ -424,7 +431,7 @@ class TestSettingsValidationEdgeCases:
             'SUPABASE_KEY': 'test-key',
             'ALLOWED_ORIGINS': ''
         }):
-            settings = Settings()
+            settings = EnvironmentConfig()
             origins = settings.get_cors_origins()
             # Should use defaults for development
             assert 'http://localhost:3000' in origins
@@ -437,5 +444,5 @@ class TestSettingsValidationEdgeCases:
             'MAX_CONCURRENT_JOBS': '150'  # Exceeds maximum of 100
         }):
             with pytest.raises(ValidationError) as exc_info:
-                Settings()
+                EnvironmentConfig()
             assert "less than or equal to 100" in str(exc_info.value) 

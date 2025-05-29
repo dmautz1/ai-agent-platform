@@ -3,6 +3,12 @@ Unit tests for database operations.
 """
 
 import pytest
+import sys
+import os
+
+# Add the backend directory to the Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+
 import asyncio
 from unittest.mock import Mock, patch, AsyncMock
 from database import DatabaseClient, get_database_client

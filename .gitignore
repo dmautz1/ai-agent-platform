@@ -27,6 +27,9 @@ config/secrets/
 .specstory/
 tasks/
 
+# Test Environment
+test_env/
+
 # Supabase local development
 .supabase/
 

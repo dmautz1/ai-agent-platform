@@ -1,14 +1,22 @@
 """
-Supabase database client and operations with comprehensive logging.
-Provides database connection management and query monitoring.
+Supabase database client configuration and operations.
+
+This module provides:
+- Database client initialization and management
+- Connection pooling and error handling
+- Database operation utilities
+- Health check functionality
 """
 
 import os
 import uuid
 import time
-from supabase import create_client, Client
+import logging
 from typing import Optional, List, Dict, Any
-from config import get_settings
+from datetime import datetime
+from supabase import create_client, Client
+from postgrest.exceptions import APIError
+from config.environment import get_settings
 from logging_system import get_database_logger, get_logger, get_performance_logger
 
 # Initialize loggers

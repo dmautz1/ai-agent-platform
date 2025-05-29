@@ -1,6 +1,8 @@
 """
 Pydantic models for request/response validation and serialization.
-This module will be implemented in task 1.6.
+Core models for the AI Agent Template framework v2.0.
+
+Job data models are now embedded in individual agent files using the @job_model decorator.
 """
 
 from pydantic import BaseModel, Field, validator, EmailStr
@@ -9,7 +11,7 @@ from datetime import datetime
 from enum import Enum
 import uuid
 
-# Placeholder - will be implemented in task 1.6
+# Enums
 class JobStatus(str, Enum):
     """Job status enumeration"""
     pending = "pending"
@@ -17,13 +19,12 @@ class JobStatus(str, Enum):
     completed = "completed"
     failed = "failed"
 
-# Additional models will be added in task 1.6 
-
-# Enums
 class JobType(str, Enum):
     """Job type enumeration"""
     text_processing = "text_processing"
     text_summarization = "text_summarization"
+    audio_summarization = "audio_summarization"
+    video_summarization = "video_summarization"
     web_scraping = "web_scraping"
     custom = "custom"
 
@@ -66,98 +67,19 @@ class UserInfo(BaseModel):
             }
         }
 
-# Job Data Models
+# Job Models (Generic - specific job data models are now in agent files)
 class JobDataBase(BaseModel):
     """Base model for job data"""
     job_type: JobType
     agent_type: AgentType = AgentType.google_adk
     metadata: Optional[Dict[str, Any]] = None
 
-class TextProcessingJobData(JobDataBase):
-    """Text processing job data model"""
-    job_type: JobType = Field(default=JobType.text_processing, const=True)
-    text: str = Field(..., min_length=1, max_length=50000, description="Text to process")
-    operation: str = Field(..., description="Processing operation to perform")
-    parameters: Optional[Dict[str, Any]] = Field(default=None, description="Additional parameters")
-    
-    class Config:
-        schema_extra = {
-            "example": {
-                "job_type": "text_processing",
-                "text": "This is a sample text to process",
-                "operation": "analyze_sentiment",
-                "parameters": {"language": "en"}
-            }
-        }
+# Union type for job data - will be dynamically populated by agent framework
+JobData = Union[JobDataBase]  # This will be extended by the agent framework
 
-class TextSummarizationJobData(JobDataBase):
-    """Text summarization job data model"""
-    job_type: JobType = Field(default=JobType.text_summarization, const=True)
-    text: str = Field(..., min_length=1, max_length=100000, description="Text to summarize")
-    max_length: Optional[int] = Field(default=150, ge=50, le=1000, description="Maximum summary length")
-    min_length: Optional[int] = Field(default=30, ge=10, le=500, description="Minimum summary length")
-    style: Optional[str] = Field(default="neutral", description="Summary style")
-    
-    @validator('min_length')
-    def validate_min_length(cls, v, values):
-        if 'max_length' in values and v >= values['max_length']:
-            raise ValueError('min_length must be less than max_length')
-        return v
-    
-    class Config:
-        schema_extra = {
-            "example": {
-                "job_type": "text_summarization",
-                "text": "Long article text to summarize...",
-                "max_length": 150,
-                "min_length": 50,
-                "style": "neutral"
-            }
-        }
-
-class WebScrapingJobData(JobDataBase):
-    """Web scraping job data model"""
-    job_type: JobType = Field(default=JobType.web_scraping, const=True)
-    url: str = Field(..., description="URL to scrape")
-    selectors: Optional[Dict[str, str]] = Field(default=None, description="CSS selectors for specific elements")
-    options: Optional[Dict[str, Any]] = Field(default=None, description="Scraping options")
-    
-    @validator('url')
-    def validate_url(cls, v):
-        if not v.startswith(('http://', 'https://')):
-            raise ValueError('URL must start with http:// or https://')
-        return v
-    
-    class Config:
-        schema_extra = {
-            "example": {
-                "job_type": "web_scraping",
-                "url": "https://example.com",
-                "selectors": {"title": "h1", "content": ".main-content"},
-                "options": {"timeout": 30, "wait_for": "networkidle"}
-            }
-        }
-
-class CustomJobData(JobDataBase):
-    """Custom job data model"""
-    job_type: JobType = Field(default=JobType.custom, const=True)
-    custom_data: Dict[str, Any] = Field(..., description="Custom job data")
-    
-    class Config:
-        schema_extra = {
-            "example": {
-                "job_type": "custom",
-                "custom_data": {"operation": "custom_task", "parameters": {"key": "value"}}
-            }
-        }
-
-# Union type for all job data types
-JobData = Union[TextProcessingJobData, TextSummarizationJobData, WebScrapingJobData, CustomJobData]
-
-# Job Request/Response Models
 class JobCreateRequest(BaseModel):
     """Job creation request model"""
-    data: JobData = Field(..., description="Job data based on job type")
+    data: Dict[str, Any] = Field(..., description="Job data (validated by specific agent)")
     priority: Optional[int] = Field(default=0, ge=0, le=10, description="Job priority (0-10)")
     tags: Optional[List[str]] = Field(default=None, description="Job tags for organization")
     
@@ -165,12 +87,11 @@ class JobCreateRequest(BaseModel):
         schema_extra = {
             "example": {
                 "data": {
-                    "job_type": "text_processing",
-                    "text": "Sample text",
-                    "operation": "analyze"
+                    "text": "Sample text to process",
+                    "operation": "analyze_sentiment"
                 },
-                "priority": 1,
-                "tags": ["analysis", "text"]
+                "priority": 5,
+                "tags": ["sentiment", "analysis"]
             }
         }
 
@@ -187,13 +108,13 @@ class JobResponse(BaseModel):
     class Config:
         schema_extra = {
             "example": {
-                "id": "123e4567-e89b-12d3-a456-426614174000",
+                "id": "job_123",
                 "status": "completed",
-                "data": {"job_type": "text_processing", "text": "Sample text"},
-                "result": "Processing completed successfully",
+                "data": {"text": "Sample text", "operation": "analyze_sentiment"},
+                "result": '{"sentiment": "positive", "confidence": 0.95}',
                 "error_message": None,
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T00:01:00Z"
+                "created_at": "2024-01-01T10:00:00Z",
+                "updated_at": "2024-01-01T10:01:00Z"
             }
         }
 
@@ -221,7 +142,7 @@ class JobCreateResponse(BaseResponse):
             "example": {
                 "success": True,
                 "message": "Job created successfully",
-                "job_id": "123e4567-e89b-12d3-a456-426614174000"
+                "job_id": "job_123"
             }
         }
 
@@ -233,19 +154,19 @@ class JobDetailResponse(BaseResponse):
         schema_extra = {
             "example": {
                 "success": True,
-                "message": "Job retrieved successfully",
+                "message": "Job details retrieved successfully",
                 "job": {
-                    "id": "123e4567-e89b-12d3-a456-426614174000",
+                    "id": "job_123",
                     "status": "completed",
-                    "data": {},
-                    "result": "Job completed",
-                    "created_at": "2024-01-01T00:00:00Z",
-                    "updated_at": "2024-01-01T00:01:00Z"
+                    "data": {"text": "Sample text"},
+                    "result": '{"processed": true}',
+                    "error_message": None,
+                    "created_at": "2024-01-01T10:00:00Z",
+                    "updated_at": "2024-01-01T10:01:00Z"
                 }
             }
         }
 
-# Job Update Models
 class JobStatusUpdate(BaseModel):
     """Job status update model"""
     status: JobStatus = Field(..., description="New job status")
@@ -264,7 +185,6 @@ class JobStatusUpdate(BaseModel):
             raise ValueError('Error message is required when status is failed')
         return v
 
-# Statistics Models
 class JobStats(BaseModel):
     """Job statistics model"""
     total_jobs: int = Field(..., description="Total number of jobs")
@@ -294,9 +214,11 @@ class JobStatsResponse(BaseResponse):
         schema_extra = {
             "example": {
                 "success": True,
-                "message": "Statistics retrieved successfully",
+                "message": "Job statistics retrieved successfully",
                 "stats": {
                     "total_jobs": 100,
+                    "pending_jobs": 5,
+                    "running_jobs": 2,
                     "completed_jobs": 85,
                     "failed_jobs": 8,
                     "success_rate": 91.4
@@ -304,7 +226,6 @@ class JobStatsResponse(BaseResponse):
             }
         }
 
-# Authentication Models
 class AuthResponse(BaseResponse):
     """Authentication response model"""
     user: UserInfo = Field(..., description="User information")
@@ -316,12 +237,12 @@ class AuthResponse(BaseResponse):
                 "message": "Authentication successful",
                 "user": {
                     "id": "123e4567-e89b-12d3-a456-426614174000",
-                    "email": "user@example.com"
+                    "email": "user@example.com",
+                    "metadata": {"name": "John Doe"}
                 }
             }
         }
 
-# Health Check Models
 class HealthResponse(BaseModel):
     """Health check response model"""
     status: str = Field(..., description="API health status")
@@ -334,9 +255,9 @@ class HealthResponse(BaseModel):
         schema_extra = {
             "example": {
                 "status": "healthy",
-                "version": "1.0.0",
+                "version": "2.0.0",
                 "environment": "development",
-                "cors_origins": 5,
-                "timestamp": "2024-01-01T00:00:00Z"
+                "cors_origins": 3,
+                "timestamp": "2024-01-01T10:00:00Z"
             }
         } 

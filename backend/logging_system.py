@@ -1,25 +1,32 @@
 """
-Comprehensive logging system for the AI Agent Template API.
-Provides structured logging, request tracking, performance monitoring, and error handling.
+Comprehensive logging system for the AI Agent Template.
+
+This module provides:
+- Structured logging with multiple loggers
+- Performance monitoring and metrics
+- Security event logging
+- Middleware for request/response logging
+- Development and production configurations
 """
 
-import logging
-import time
-import json
-import traceback
-import uuid
-from datetime import datetime
-from typing import Dict, Any, Optional, List
-from contextlib import contextmanager
-from functools import wraps
 import asyncio
+import inspect
+import json
+import logging
+import logging.config
+import os
+import sys
+import time
+import traceback
+from datetime import datetime
+from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, Union
 
-from fastapi import Request, Response
-from fastapi.routing import APIRoute
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response as StarletteResponse
 
-from config import get_settings
+from config.environment import get_settings
 
 class StructuredLogger:
     """Structured logger with context management and formatting"""
