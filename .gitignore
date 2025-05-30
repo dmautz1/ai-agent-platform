@@ -52,7 +52,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# Python build/distribution directories (backend only)
+backend/lib/
 lib64/
 parts/
 sdist/
@@ -63,6 +64,14 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# Compiled library files
+*.lib
+*.a
+
+# But keep TypeScript source files in frontend
+!frontend/src/lib/
+!**/src/lib/
 
 # PyInstaller
 *.manifest
@@ -246,6 +255,9 @@ jspm_packages/
 .next/
 out/
 
+# Turbo (for monorepos)
+.turbo/
+
 # Nuxt.js build / generate output
 .nuxt
 dist
@@ -312,13 +324,14 @@ dist/
 *.pt
 *.safetensors
 
-# Large datasets
-data/
+# Large datasets and model outputs
+data/raw/
+data/processed/
 datasets/
-*.csv
-*.json
-*.parquet
-*.arrow
+models/*.csv
+models/*.json
+models/*.parquet
+models/*.arrow
 
 # Jupyter notebooks checkpoints
 .ipynb_checkpoints/
@@ -431,14 +444,22 @@ target/
 # Redis dump
 dump.rdb
 
-# PostgreSQL
-*.sql
-
 # Database backups
 backup/
 backups/
 *.backup
 *.dump
+
+# PostgreSQL dumps and large data files
+*.sql.dump
+*.sql.gz
+data.sql
+backup.sql
+
+# But keep schema and migration files
+!**/schema.sql
+!**/migrations/*.sql
+!**/seeds/*.sql
 
 # =============================================================================
 # IDE & EDITOR FILES
@@ -604,4 +625,10 @@ hs_err_pid*
 # Analytics and tracking
 analytics/
 metrics/
-telemetry/ 
+telemetry/
+
+# But keep configuration files
+!config/*.json
+!**/config.json
+!package*.json
+!tsconfig*.json 
