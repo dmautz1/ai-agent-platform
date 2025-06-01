@@ -1,54 +1,53 @@
-# React + TypeScript + Vite
+# Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> **React TypeScript frontend** - Modern web interface for AI agent management
 
-Currently, two official plugins are available:
+## Quick Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+```bash
+# Install dependencies
+npm install
 
-## Expanding the ESLint configuration
+# Start development server
+npm run dev
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+# Build for production
+npm run build
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Scripts
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
+```bash
+npm run dev                    # Development server (http://localhost:5173)
+npm run build                  # Production build
+npm run test                   # Run all tests
+npm run test:unit              # Unit tests only
+npm run test:integration       # Integration tests only
+npm run test:watch             # Watch mode
+npm run lint                   # Lint code
+npm run create-admin           # Create admin user
 ```
+
+## Environment Setup
+
+Copy the environment template:
+```bash
+cp env.local.example .env.local
+```
+
+Add your configuration:
+```bash
+VITE_SUPABASE_URL=your-supabase-url
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+VITE_API_URL=http://localhost:8000
+```
+
+## Documentation
+
+For complete setup and development guides, see:
+
+- **[Complete Documentation](../docs/README.md)** - Full documentation hub
+- **[Quick Start Guide](../docs/getting-started/quick-start.md)** - 15-minute setup
+- **[Environment Setup](../docs/getting-started/environment-setup.md)** - Detailed configuration
+- **[Authentication Guide](../docs/integrations/authentication.md)** - User management
+- **[Testing Guide](../docs/development/testing.md)** - Testing strategy

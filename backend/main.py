@@ -27,6 +27,7 @@ from job_pipeline import start_job_pipeline, stop_job_pipeline, get_job_pipeline
 from database import get_database_operations
 from models import JobCreateRequest, JobResponse, JobListResponse, JobCreateResponse, JobDetailResponse
 from config.agent_config import get_agent_config_manager, get_agent_config, AgentProfile, AgentPerformanceMode
+from static_files import setup_static_file_serving, get_static_file_info
 
 # Initialize settings and validate required configuration
 settings = get_settings()
@@ -864,6 +865,27 @@ async def set_agent_profile(
         except Exception as e:
             logger.error("Agent profile update failed", exception=e, agent_name=agent_name, user_id=user["id"])
             raise HTTPException(status_code=500, detail=f"Failed to update profile for {agent_name}: {str(e)}")
+
+@app.get("/static-info")
+async def get_static_file_info_endpoint(user: Dict[str, Any] = Depends(get_current_user)):
+    """Get information about static file serving configuration"""
+    with perf_logger.time_operation("get_static_file_info", user_id=user["id"]):
+        logger.info("Static file info requested", user_id=user["id"])
+        
+        try:
+            static_info = get_static_file_info()
+            return {
+                "success": True,
+                "message": "Static file information retrieved",
+                "static_file_config": static_info
+            }
+        except Exception as e:
+            logger.error("Static file info retrieval failed", exception=e, user_id=user["id"])
+            raise HTTPException(status_code=500, detail=f"Failed to retrieve static file info: {str(e)}")
+
+# Set up static file serving after all API routes are defined
+# This must be done before the global exception handler
+setup_static_file_serving(app)
 
 # Global exception handler
 @app.exception_handler(Exception)
