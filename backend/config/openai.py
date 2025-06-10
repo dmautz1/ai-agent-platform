@@ -1,7 +1,7 @@
 """
 OpenAI Configuration Module
 
-This module handles OpenAI configuration and authentication for the AI Agent Template.
+This module handles OpenAI configuration and authentication for the AI Agent Platform.
 Provides clean integration with OpenAI services.
 """
 

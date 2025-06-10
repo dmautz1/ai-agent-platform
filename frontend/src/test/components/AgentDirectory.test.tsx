@@ -133,7 +133,7 @@ const mockAgents: AgentInfo[] = [
     class_name: 'DataAgent',
     supported_environments: ['production'],
     lifecycle_state: 'enabled',
-    version: '2.0.0',
+    version: '1.0.0',
     enabled: true,
     has_error: false,
     created_at: '2024-01-01T00:00:00Z',

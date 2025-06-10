@@ -1,7 +1,7 @@
 """
 Base Agent Module
 
-This module provides the base agent interface and utilities for the AI Agent Template.
+This module provides the base agent interface and utilities for the AI Agent Platform.
 Focused on clean, flexible agent development with unified LLM service integration.
 """
 
@@ -71,7 +71,7 @@ class BaseAgent(ABC):
         Initialize the base agent.
         
         Args:
-            name: Agent name
+            name: Agent name (required - this is the primary identifier)
             description: Agent description
             model: Model name to use
             result_format: Default result format for this agent
@@ -116,29 +116,6 @@ class BaseAgent(ABC):
         logger.info(f"Created {self.__class__.__name__}: {name}", 
                    profile=self.agent_config.profile.value,
                    performance_mode=self.agent_config.performance_mode.value)
-    
-    @property
-    def agent_identifier(self) -> str:
-        """
-        Derive agent identifier from class name.
-        
-        Returns:
-            String identifier for this agent (e.g., 'simple_prompt' from 'SimplePromptAgent')
-        """
-        class_name = self.__class__.__name__
-        
-        # Remove 'Agent' suffix if present
-        if class_name.endswith('Agent'):
-            class_name = class_name[:-5]
-        
-        # Convert CamelCase to snake_case
-        result = ""
-        for i, char in enumerate(class_name):
-            if i > 0 and char.isupper():
-                result += "_"
-            result += char.lower()
-        
-        return result
     
     async def initialize(self) -> None:
         """Initialize the agent with database connections."""
@@ -343,7 +320,7 @@ class BaseAgent(ABC):
         agent_info = {
             "name": self.name,
             "description": self.description,
-            "agent_identifier": self.agent_identifier,
+            "agent_identifier": self.name,
             "model": self.model,
             "result_format": self.result_format,
             "is_initialized": self.is_initialized,
@@ -446,42 +423,41 @@ class BaseAgent(ABC):
         return f"{self.name} ({self.__class__.__name__})"
 
 class AgentRegistry:
-    """Registry for managing agent instances with improved error handling and lifecycle management."""
+    """Registry for managing agent instances"""
     
     def __init__(self):
         self._agents: Dict[str, BaseAgent] = {}
-        self._agent_types: Dict[str, str] = {}
-        logger.info("Initialized AgentRegistry")
     
     def register_agent(self, agent: BaseAgent) -> None:
-        """Register an agent instance in the registry."""
-        agent_name = agent.name
+        """
+        Register an agent in the registry.
         
-        if agent_name in self._agents:
-            logger.warning(f"Agent {agent_name} already registered, replacing")
+        Args:
+            agent: Agent instance to register
+        """
+        if agent.name in self._agents:
+            logger.warning(f"Agent {agent.name} is already registered. Overriding.")
         
-        self._agents[agent_name] = agent
-        self._agent_types[agent_name] = agent.__class__.__name__
-        
-        logger.info(f"Registered agent: {agent_name} ({agent.__class__.__name__})")
+        self._agents[agent.name] = agent
+        logger.info(f"Registered agent: {agent.name}")
     
     def unregister_agent(self, name: str) -> bool:
-        """Unregister an agent from the registry."""
+        """
+        Unregister an agent from the registry.
+        
+        Args:
+            name: Name of the agent to unregister
+            
+        Returns:
+            True if agent was unregistered, False if not found
+        """
         if name in self._agents:
             agent = self._agents.pop(name)
-            self._agent_types.pop(name, None)
-            
-            # Cleanup agent resources
-            try:
-                asyncio.create_task(agent.cleanup())
-            except Exception as e:
-                logger.error(f"Error cleaning up agent {name}: {e}")
-            
             logger.info(f"Unregistered agent: {name}")
             return True
         else:
-            logger.warning(f"Agent {name} not found in registry")
-        return False
+            logger.warning(f"Attempted to unregister non-existent agent: {name}")
+            return False
     
     def get_agent(self, name: str) -> Optional[BaseAgent]:
         """Get an agent instance by name."""
@@ -495,9 +471,9 @@ class AgentRegistry:
         return list(self._agents.keys())
     
     def get_agents_by_type(self, agent_type: str) -> List[BaseAgent]:
-        """Get all agents of a specific type."""
+        """Get all agents of a specific type"""
         return [
-            agent for agent in self._agents.values()
+            agent for agent in self._agents.values() 
             if agent.__class__.__name__ == agent_type
         ]
     
@@ -513,7 +489,6 @@ class AgentRegistry:
             await asyncio.gather(*cleanup_tasks, return_exceptions=True)
         
         self._agents.clear()
-        self._agent_types.clear()
         logger.info("All agents cleaned up")
 
 # Global agent registry

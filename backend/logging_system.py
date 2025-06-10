@@ -1,5 +1,5 @@
 """
-Comprehensive logging system for the AI Agent Template.
+Comprehensive logging system for the AI Agent Platform.
 
 This module provides:
 - Structured logging with multiple loggers

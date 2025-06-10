@@ -25,9 +25,9 @@ class PromptJobData(BaseModel):
         json_schema_extra={"form_field_type": "llm_provider"}
     )
     model: Optional[str] = Field(default=None, description="Specific model to use (provider-specific)")
-    temperature: float = Field(default=0.7, description="Temperature for response generation")
+    temperature: float = Field(default=0.8, description="Temperature for response generation")
     system_instruction: Optional[str] = Field(default=None, description="Optional system instruction for the LLM")
-    max_tokens: Optional[int] = Field(default=None, description="Maximum tokens to generate")
+    max_tokens: Optional[int] = Field(default=1000, description="Maximum tokens to generate")
 
 class SimplePromptAgent(SelfContainedAgent):
     """Simple agent that processes text prompts using any available LLM provider"""

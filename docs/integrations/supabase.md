@@ -4,7 +4,7 @@
 
 ## Overview
 
-The AI Agent Template uses [Supabase](https://supabase.com) as its primary database, providing:
+The AI Agent Platform uses [Supabase](https://supabase.com) as its primary database, providing:
 
 - **PostgreSQL Database** - Robust relational database
 - **Real-time Subscriptions** - Live data updates
@@ -19,7 +19,7 @@ The AI Agent Template uses [Supabase](https://supabase.com) as its primary datab
 1. Go to [supabase.com](https://supabase.com) and sign up
 2. Click **"New Project"**
 3. Choose organization and enter project details:
-   - **Name**: `ai-agent-template`
+   - **Name**: `ai-agent-platform`
    - **Database Password**: Generate strong password
    - **Region**: Choose closest to your users
 4. Wait 2-3 minutes for project creation

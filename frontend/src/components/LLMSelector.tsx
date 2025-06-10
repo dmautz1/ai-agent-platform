@@ -117,11 +117,6 @@ export function LLMSelector({
         
         setProvidersInfo(providersData);
         
-        // Set default provider if none selected
-        if (!selectedProvider && providersData.default_provider) {
-          onProviderChange(providersData.default_provider);
-        }
-        
       } catch (err) {
         const errorMessage = handleApiError(err);
         setError(errorMessage);
@@ -132,7 +127,14 @@ export function LLMSelector({
     };
 
     fetchProviders();
-  }, [selectedProvider, onProviderChange]);
+  }, []); // Empty dependency array - only run once on mount
+
+  // Set default provider when providers are loaded and no provider is selected
+  useEffect(() => {
+    if (providersInfo && !selectedProvider && providersInfo.default_provider) {
+      onProviderChange(providersInfo.default_provider);
+    }
+  }, [providersInfo, selectedProvider, onProviderChange]);
 
   // Helper function to get display names for services
   const getServiceDisplayName = (providerName: string) => {

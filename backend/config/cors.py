@@ -1,5 +1,5 @@
 """
-CORS configuration management for the AI Agent Template API.
+CORS configuration management for the AI Agent Platform API.
 Centralizes CORS settings and provides utilities for managing cross-origin requests.
 """
 

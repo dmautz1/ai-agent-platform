@@ -66,7 +66,7 @@ const mockManyDetailsAgent: AgentInfo = {
   class_name: 'DetailedAgent',
   lifecycle_state: 'beta',
   supported_environments: ['test', 'dev', 'staging'],
-  version: '2.0.0',
+  version: '1.0.0',
   enabled: true,
   has_error: false,
   created_at: '2024-01-01T00:00:00Z',

@@ -1,7 +1,7 @@
 """
 Meta Llama Configuration Module
 
-This module handles Meta Llama configuration and authentication for the AI Agent Template.
+This module handles Meta Llama configuration and authentication for the AI Agent Platform.
 Provides clean integration with Meta Llama models through OpenAI-compatible APIs.
 """
 

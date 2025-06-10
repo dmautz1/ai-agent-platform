@@ -28,7 +28,7 @@ from config.google_ai import validate_google_ai_environment, get_google_ai_confi
 from agent import get_agent_registry
 from agent_discovery import get_agent_discovery_system
 from agent_framework import register_agent_endpoints, get_all_agent_info, get_registered_agents
-from agents import discover_and_register_agents, get_discovery_status
+from agents import discover_and_register_agents, instantiate_and_register_agents, get_discovery_status
 from job_pipeline import start_job_pipeline, stop_job_pipeline, get_job_pipeline
 from database import get_database_operations, check_database_health
 from models import JobCreateRequest, JobResponse, JobListResponse, JobCreateResponse, JobDetailResponse
@@ -183,7 +183,7 @@ async def lifespan(app: FastAPI):
     log_startup_info()
     
     logger.info(
-        "Starting AI Agent Platform v2.0",
+        "Starting AI Agent Platform v1.0",
         extra={
             "startup_info": {
                 "version": settings.app_version,
@@ -202,14 +202,18 @@ async def lifespan(app: FastAPI):
         # Get agent registry
         registry = get_agent_registry()
         
-        # Auto-discover and register agents from agents/ directory
+        # Auto-discover agent classes from agents/ directory
         discovery_result = discover_and_register_agents(registry)
+        
+        # Instantiate and register agent instances with explicit names
+        instantiation_result = instantiate_and_register_agents(registry)
         
         logger.info(
             "Agent auto-discovery completed",
-            agents_discovered=discovery_result['total_registered'],
-            errors=discovery_result['total_errors'],
-            agent_files_found=discovery_result['agent_files_found']
+            classes_discovered=discovery_result['total_registered'],
+            agents_instantiated=instantiation_result['total_instantiated'],
+            discovery_errors=discovery_result['total_errors'],
+            instantiation_errors=instantiation_result['total_errors']
         )
         
         # Auto-register all agent endpoints with FastAPI
@@ -217,12 +221,12 @@ async def lifespan(app: FastAPI):
         
         logger.info(
             "Agent framework initialization completed",
-            total_agents=discovery_result['total_registered'],
+            total_agents=instantiation_result['total_instantiated'],
             total_endpoints=endpoint_count,
-            framework_version="2.0"
+            framework_version="1.0"
         )
         
-        # Log any discovery errors
+        # Log any errors
         if discovery_result['errors']:
             for error in discovery_result['errors']:
                 logger.warning(f"Agent discovery error: {error}")
@@ -254,10 +258,11 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app with lifespan
 app = FastAPI(
     title="AI Agent Platform API",
-    description="AI Agent Platform v2.0 - Self-contained agent framework with automatic discovery",
-    version="2.0.0",
+    description="AI Agent Platform v1.0 - Self-contained agent framework with automatic discovery",
+    version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -288,11 +293,11 @@ async def root():
         logger.info("Root health check requested")
         
         return {
-            "message": f"{settings.app_name} v2.0 is running",
+            "message": f"{settings.app_name} v1.0 is running",
             "status": "healthy",
             "version": settings.app_version,
             "environment": settings.environment.value,
-            "framework_version": "2.0",
+            "framework_version": "1.0",
             "agent_framework": "self-contained",
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
@@ -433,7 +438,7 @@ async def list_agents():
             
             return {
                 "status": "success",
-                "framework_version": "2.0",
+                "framework_version": "1.0",
                 "discovery_system": "agent_discovery",
                 "discovery_stats": discovery_stats,
                 "agents": agents_info,
@@ -1249,7 +1254,7 @@ async def get_config_info():
         return {
             "app_name": settings.app_name,
             "app_version": settings.app_version,
-            "framework_version": "2.0",
+            "framework_version": "1.0",
             "environment": settings.environment.value,
             "debug": settings.debug,
             "cors_origins_count": len(cors_origins),

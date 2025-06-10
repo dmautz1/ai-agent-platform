@@ -1,5 +1,5 @@
 """
-Supabase authentication middleware for the AI Agent Template.
+Supabase authentication middleware for the AI Agent Platform.
 
 This module provides authentication functionality including:
 - JWT token validation

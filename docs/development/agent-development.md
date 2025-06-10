@@ -1,8 +1,8 @@
-# Agent Customization Guide
+# Agent Development Guide
 
 > **Complete Guide to Building Custom AI Agents** - From basic setup to advanced patterns
 
-This guide teaches you how to create custom AI agents using the Self-Contained Agent Framework v2.0. Perfect for developers who want to build specialized AI functionality for their applications.
+This guide teaches you how to create custom AI agents using the Self-Contained Agent Framework v1.0. Perfect for developers who want to build specialized AI functionality for their applications.
 
 ## Table of Contents
 
@@ -24,7 +24,7 @@ This guide teaches you how to create custom AI agents using the Self-Contained A
 - Python 3.8+
 - Basic understanding of Python and FastAPI
 - Google AI Studio API key (for AI functionality)
-- AI Agent Template setup (see [README.md](README.md))
+- AI Agent Platform setup (see [README.md](README.md))
 
 ### 5-Minute Agent Creation
 
@@ -47,7 +47,11 @@ class MyJobData(BaseModel):
 
 class MyFirstAgent(SelfContainedAgent):
     def __init__(self, **kwargs):
-        super().__init__(description="My first custom agent", **kwargs)
+        super().__init__(
+            name="my_first_agent",  # Explicit name - this is the primary identifier
+            description="My first custom agent",
+            **kwargs
+        )
     
     @endpoint("/my-first-agent/process", methods=["POST"], auth_required=True)
     async def process(self, request_data: dict, user: dict):
@@ -71,7 +75,7 @@ class MyFirstAgent(SelfContainedAgent):
 
 ## Framework Overview
 
-### Self-Contained Agent Framework v2.0
+### Self-Contained Agent Framework v1.0
 
 The platform uses a **dual-agent architecture** with two approaches:
 
@@ -99,7 +103,11 @@ class MyJobData(BaseModel):
 
 class MyAgent(SelfContainedAgent):
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(
+            name="my_agent",  # Explicit name - this is the primary identifier
+            description="My custom agent description",
+            **kwargs
+        )
         self.llm = get_unified_llm_service()  # LLM-agnostic service
     
     @endpoint("/my-agent/process", methods=["POST"], auth_required=True)
@@ -114,7 +122,6 @@ class MyAgent(SelfContainedAgent):
             provider=job_data.provider  # User's choice
         )
         return AgentExecutionResult(success=True, result=result)
-```
 
 #### BaseAgent - Advanced Use Cases
 
@@ -185,6 +192,7 @@ class MyAgentJobData(BaseModel):
 class MyAgent(SelfContainedAgent):
     def __init__(self, **kwargs):
         super().__init__(
+            name="my_agent",  # Explicit name - this is the primary identifier
             description="Description of what your agent does",
             **kwargs
         )

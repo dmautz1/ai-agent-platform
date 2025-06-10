@@ -204,7 +204,8 @@ npm run dev
 
 ```python
 from pydantic import BaseModel, Field
-from agent import SelfContainedAgent, AgentExecutionResult
+from agent_framework import SelfContainedAgent, job_model
+from agent import AgentExecutionResult
 
 @job_model
 class MyFirstAgentJobData(BaseModel):
@@ -212,12 +213,15 @@ class MyFirstAgentJobData(BaseModel):
 
 class MyFirstAgent(SelfContainedAgent):
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = "My First Agent"
+        super().__init__(
+            name="my_first_agent",  # Explicit name - this is the primary identifier
+            description="My first custom agent",
+            **kwargs
+        )
 
     async def _execute_job_logic(self, job_data: MyFirstAgentJobData):
         # Your agent logic here
-        result = await self.llm.query(
+        result = await self.llm_service.query(
             prompt=f"Process this message: {job_data.message}"
         )
         
@@ -303,4 +307,4 @@ npm run dev
 
 **🎉 Congratulations!** You now have a fully functional AI Agent Platform. Start building amazing agents!
 
-**Need help?** Check our [Troubleshooting Guide](troubleshooting.md) or [create an issue](https://github.com/dmautz1/ai-agent-platform/issues/new/choose). 
+**Need help?** Check our [Troubleshooting Guide](troubleshooting.md) or [create an issue](https://github.com/dmautz1/ai-agent-platform/issues/new/choose).

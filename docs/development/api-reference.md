@@ -1,8 +1,8 @@
-# AI Agent Template - API Documentation
+# AI Agent Platform - API Documentation
 
 > **Complete API Reference** - Comprehensive guide to the Generic Agent Framework API
 
-This document provides complete API documentation for the AI Agent Template v2.0, featuring a fully generic agent framework with dynamic discovery and zero configuration. All endpoints are also available through the interactive documentation at `http://localhost:8000/docs` when the server is running.
+This document provides complete API documentation for the AI Agent Platform v1.0, featuring a fully generic agent framework with dynamic discovery and zero configuration. All endpoints are also available through the interactive documentation at `http://localhost:8000/docs` when the server is running.
 
 ## Base URL
 
@@ -106,9 +106,9 @@ GET /health
 ```json
 {
   "status": "healthy",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "environment": "development",
-  "framework_version": "2.0",
+  "framework_version": "1.0",
   "cors_origins": 3,
   "debug": true,
   "agent_status": {
@@ -137,11 +137,11 @@ GET /
 **Response:**
 ```json
 {
-  "message": "AI Agent Template v2.0 is running",
+  "message": "AI Agent Platform v1.0 is running",
   "status": "healthy",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "environment": "development",
-  "framework_version": "2.0",
+  "framework_version": "1.0",
   "agent_framework": "self-contained",
   "timestamp": "2024-01-01T10:00:00Z"
 }
@@ -209,54 +209,32 @@ GET /agents
 
 **Authentication:** None required
 
-**Response:**
+**Response Example:**
 ```json
 {
   "status": "success",
-  "framework_version": "2.0",
+  "framework_version": "1.0",
   "discovery_system": "agent_discovery",
-  "discovery_stats": {
-    "total_scanned": 3,
-    "total_loaded": 2,
-    "total_failed": 1,
-    "last_scan": "2024-01-01T10:00:00Z",
-    "scan_duration": 0.123
-  },
   "agents": {
-    "simple_example": {
-      "identifier": "simple_example",
-      "name": "Simple Example Agent",
-      "description": "Simple prompt processing agent",
+    "simple_prompt": {
+      "identifier": "simple_prompt",
+      "name": "Simple Prompt Agent",
+      "description": "A simple agent that processes text prompts using any available LLM provider",
       "class_name": "SimplePromptAgent",
       "lifecycle_state": "enabled",
-      "supported_environments": ["all"],
+      "supported_environments": ["dev", "prod"],
       "version": "1.0.0",
       "enabled": true,
       "has_error": false,
-      "error_message": null,
-      "created_at": "2024-01-01T09:00:00Z",
-      "last_updated": "2024-01-01T09:00:00Z"
-    },
-    "my_custom_agent": {
-      "identifier": "my_custom_agent",
-      "name": "My Custom Agent",
-      "description": "Custom business logic agent",
-      "class_name": "MyCustomAgent",
-      "lifecycle_state": "enabled",
-      "supported_environments": ["dev", "prod"],
-      "version": "2.1.0",
-      "enabled": true,
-      "has_error": false,
-      "error_message": null,
-      "created_at": "2024-01-01T08:30:00Z",
-      "last_updated": "2024-01-01T09:15:00Z"
+      "created_at": "2024-01-01T00:00:00Z",
+      "last_updated": "2024-01-01T00:00:00Z"
     }
   },
   "summary": {
     "total_agents": 2,
     "enabled_agents": 2,
     "disabled_agents": 0,
-    "current_environment": "dev"
+    "current_environment": "development"
   }
 }
 ```
@@ -271,48 +249,26 @@ GET /agents/{agent_identifier}
 **Authentication:** None required
 
 **Path Parameters:**
-- `agent_identifier` (string): Identifier of the agent (e.g., "simple_example")
+- `agent_identifier` (string): Identifier of the agent (e.g., "simple_prompt")
 
-**Response:**
+**Response Example:**
 ```json
 {
   "status": "success",
   "agent": {
-    "identifier": "simple_example",
-    "name": "Simple Example Agent",
-    "description": "Simple prompt processing agent",
+    "identifier": "simple_prompt",
+    "name": "Simple Prompt Agent",
+    "description": "A simple agent that processes text prompts using any available LLM provider",
     "class_name": "SimplePromptAgent",
-    "module_path": "agents.simple_example_agent",
+    "module_path": "agents.simple_prompt_agent",
     "lifecycle_state": "enabled",
-    "supported_environments": ["all"],
+    "supported_environments": ["dev", "prod"],
     "version": "1.0.0",
     "enabled": true,
     "has_error": false,
-    "error_message": null,
-    "created_at": "2024-01-01T09:00:00Z",
-    "last_updated": "2024-01-01T09:00:00Z",
-    "metadata_extras": {},
-    "instance_available": true,
-    "runtime_info": {
-      "endpoints": [
-        {
-          "path": "/simple-prompt/process",
-          "methods": ["POST"],
-          "auth_required": true,
-          "public": false
-        }
-      ],
-      "models": ["PromptJobData"],
-      "framework_version": "2.0",
-      "self_contained": true,
-      "google_ai_integration": true,
-      "google_ai_stats": {
-        "total_requests": 42,
-        "success_rate": 0.95,
-        "average_response_time": 1.23
-      },
-      "google_ai_connection": "active"
-    }
+    "created_at": "2024-01-01T00:00:00Z",
+    "last_updated": "2024-01-01T00:00:00Z",
+    "instance_available": true
   }
 }
 ```
@@ -329,19 +285,16 @@ GET /agents/{agent_identifier}/health
 **Path Parameters:**
 - `agent_identifier` (string): Identifier of the agent
 
-**Response:**
+**Response Example:**
 ```json
 {
   "status": "success",
   "health": {
-    "status": "healthy",
-    "agent_identifier": "simple_example",
-    "instance_loaded": true,
-    "last_check": "2024-01-01T10:00:00Z",
-    "response_time_ms": 45,
-    "endpoints_registered": 1,
-    "models_available": 1,
-    "google_ai_connection": "active"
+    "agent_identifier": "simple_prompt",
+    "agent_name": "Simple Prompt Agent",
+    "is_healthy": true,
+    "status": "ready",
+    "last_check": "2024-01-01T12:00:00Z"
   }
 }
 ```
@@ -358,36 +311,31 @@ GET /agents/{agent_identifier}/schema
 **Path Parameters:**
 - `agent_identifier` (string): Identifier of the agent
 
-**Response:**
+**Response Example:**
 ```json
 {
   "status": "success",
-  "agent_id": "simple_example",
-  "agent_name": "Simple Example Agent",
-  "description": "Simple prompt processing agent",
-  "available_models": ["PromptJobData"],
+  "agent_identifier": "simple_prompt",
+  "agent_name": "Simple Prompt Agent",
+  "description": "A simple agent that processes text prompts using any available LLM provider",
+  "instance_available": true,
+  "available_models": ["SimplePromptJobData"],
   "schemas": {
-    "PromptJobData": {
-      "model_name": "PromptJobData",
-      "model_class": "PromptJobData",
-      "title": "PromptJobData",
-      "description": "Simple prompt job data model",
+    "SimplePromptJobData": {
+      "model_name": "SimplePromptJobData",
+      "model_class": "SimplePromptJobData",
+      "title": "SimplePromptJobData",
+      "description": "Job data for simple prompt processing",
       "type": "object",
       "properties": {
         "prompt": {
+          "title": "Prompt",
+          "description": "The text prompt to process",
           "type": "string",
-          "description": "Text prompt to send to LLM",
           "form_field_type": "textarea"
-        },
-        "max_tokens": {
-          "type": "integer",
-          "default": 1000,
-          "description": "Maximum tokens in response",
-          "form_field_type": "number"
         }
       },
-      "required": ["prompt"],
-      "definitions": {}
+      "required": ["prompt"]
     }
   }
 }
@@ -407,22 +355,35 @@ POST /jobs
 **Request Body:**
 ```json
 {
-  "agent_identifier": "simple_example",
+  "agent_identifier": "simple_prompt",
   "data": {
-    "prompt": "Write a short story about a robot learning to paint",
-    "max_tokens": 1500
+    "prompt": "Hello, how are you?",
+    "temperature": 0.7
   },
   "priority": 5,
-  "tags": ["creative", "story"]
+  "tags": ["test", "example"]
 }
 ```
 
-**Response:**
+**Response Example:**
 ```json
 {
   "success": true,
-  "message": "Job created and queued for processing",
-  "job_id": "550e8400-e29b-41d4-a716-446655440000"
+  "message": "Job created successfully",
+  "job_id": "123e4567-e89b-12d3-a456-426614174000",
+  "job": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "status": "pending",
+    "agent_identifier": "simple_prompt",
+    "data": {
+      "prompt": "Hello, how are you?",
+      "temperature": 0.7
+    },
+    "priority": 5,
+    "tags": ["test", "example"],
+    "created_at": "2024-01-01T12:00:00Z",
+    "updated_at": "2024-01-01T12:00:00Z"
+  }
 }
 ```
 
@@ -430,7 +391,7 @@ POST /jobs
 ```json
 {
   "message": "Job data validation failed",
-  "agent_identifier": "simple_example",
+  "agent_identifier": "simple_prompt",
   "validation_errors": [
     {
       "field": "prompt",
@@ -439,13 +400,13 @@ POST /jobs
     }
   ],
   "expected_schema": {
-    "model_name": "PromptJobData",
-    "available_models": ["PromptJobData"],
+    "model_name": "SimplePromptJobData",
+    "available_models": ["SimplePromptJobData"],
     "schema": {
       "type": "object",
       "properties": {
         "prompt": {"type": "string"},
-        "max_tokens": {"type": "integer", "default": 1000}
+        "temperature": {"type": "number", "default": 0.7}
       },
       "required": ["prompt"]
     }
@@ -465,10 +426,10 @@ POST /jobs/validate
 **Request Body:**
 ```json
 {
-  "agent_identifier": "simple_example",
+  "agent_identifier": "simple_prompt",
   "data": {
-    "prompt": "Test prompt",
-    "max_tokens": 500
+    "prompt": "Hello, how are you?",
+    "temperature": 0.7
   }
 }
 ```
@@ -480,17 +441,17 @@ POST /jobs/validate
   "message": "Job data validation completed",
   "validation_result": {
     "valid": true,
-    "agent_identifier": "simple_example",
-    "model_used": "PromptJobData",
+    "agent_identifier": "simple_prompt",
+    "model_used": "SimplePromptJobData",
     "errors": [],
     "warnings": [],
     "schema_info": {
-      "model_name": "PromptJobData",
-      "available_models": ["PromptJobData"]
+      "model_name": "SimplePromptJobData",
+      "available_models": ["SimplePromptJobData"]
     },
     "validated_data": {
-      "prompt": "Test prompt",
-      "max_tokens": 500
+      "prompt": "Hello, how are you?",
+      "temperature": 0.7
     }
   }
 }
@@ -509,24 +470,30 @@ GET /jobs?limit=50&offset=0
 - `limit` (integer, optional): Number of jobs to return (default: 50, max: 100)
 - `offset` (integer, optional): Number of jobs to skip (default: 0)
 
-**Response:**
+**Response Example:**
 ```json
 {
   "success": true,
   "message": "Jobs retrieved successfully",
   "jobs": [
     {
-      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "id": "123e4567-e89b-12d3-a456-426614174000",
       "status": "completed",
-      "agent_identifier": "simple_example",
+      "agent_identifier": "simple_prompt",
       "data": {
-        "prompt": "Write a short story",
-        "max_tokens": 1500
+        "prompt": "Hello, how are you?",
+        "temperature": 0.7
       },
-      "result": "Once upon a time, in a world where artificial intelligence...",
-      "error_message": null,
-      "created_at": "2024-01-01T10:00:00Z",
-      "updated_at": "2024-01-01T10:01:30Z"
+      "result": {
+        "success": true,
+        "result": "Hello! I'm doing well, thank you for asking...",
+        "metadata": {
+          "execution_time": 1.23,
+          "model_used": "gemini-1.5-flash"
+        }
+      },
+      "created_at": "2024-01-01T12:00:00Z",
+      "updated_at": "2024-01-01T12:01:23Z"
     }
   ],
   "total_count": 1
@@ -545,23 +512,29 @@ GET /jobs/{job_id}
 **Path Parameters:**
 - `job_id` (string): Unique job identifier
 
-**Response:**
+**Response Example:**
 ```json
 {
   "success": true,
-  "message": "Job details retrieved successfully",
+  "message": "Job retrieved successfully",
   "job": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "status": "running",
-    "agent_identifier": "simple_example",
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "status": "completed",
+    "agent_identifier": "simple_prompt",
     "data": {
-      "prompt": "Write a short story about a robot learning to paint",
-      "max_tokens": 1500
+      "prompt": "Hello, how are you?",
+      "temperature": 0.7
     },
-    "result": null,
-    "error_message": null,
-    "created_at": "2024-01-01T10:00:00Z",
-    "updated_at": "2024-01-01T10:00:30Z"
+    "result": {
+      "success": true,
+      "result": "Hello! I'm doing well, thank you for asking...",
+      "metadata": {
+        "execution_time": 1.23,
+        "model_used": "gemini-1.5-flash"
+      }
+    },
+    "created_at": "2024-01-01T12:00:00Z",
+    "updated_at": "2024-01-01T12:01:23Z"
   }
 }
 ```
@@ -578,23 +551,21 @@ POST /jobs/{job_id}/retry
 **Path Parameters:**
 - `job_id` (string): Unique job identifier
 
-**Response:**
+**Response Example:**
 ```json
 {
   "success": true,
   "message": "Job retried successfully",
   "data": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "id": "123e4567-e89b-12d3-a456-426614174000",
     "status": "pending",
-    "agent_identifier": "simple_example",
+    "agent_identifier": "simple_prompt",
     "data": {
-      "prompt": "Write a short story",
-      "max_tokens": 1500
+      "prompt": "Hello, how are you?",
+      "temperature": 0.7
     },
-    "result": null,
-    "error_message": null,
-    "created_at": "2024-01-01T10:00:00Z",
-    "updated_at": "2024-01-01T10:05:00Z"
+    "created_at": "2024-01-01T12:00:00Z",
+    "updated_at": "2024-01-01T12:05:00Z"
   }
 }
 ```
@@ -603,8 +574,8 @@ POST /jobs/{job_id}/retry
 ```json
 {
   "message": "Cannot retry job - existing job data no longer meets agent requirements",
-  "job_id": "550e8400-e29b-41d4-a716-446655440000", 
-  "agent_identifier": "simple_example",
+  "job_id": "123e4567-e89b-12d3-a456-426614174000", 
+  "agent_identifier": "simple_prompt",
   "validation_errors": [
     {
       "field": "new_required_field",
@@ -613,8 +584,8 @@ POST /jobs/{job_id}/retry
     }
   ],
   "expected_schema": {
-    "model_name": "PromptJobData",
-    "available_models": ["PromptJobData"]
+    "model_name": "SimplePromptJobData",
+    "available_models": ["SimplePromptJobData"]
   },
   "suggestion": "The agent schema may have changed since this job was created. Please create a new job with updated data."
 }
@@ -637,7 +608,7 @@ DELETE /jobs/{job_id}
 {
   "success": true,
   "message": "Job deleted successfully",
-  "job_id": "550e8400-e29b-41d4-a716-446655440000"
+  "job_id": "123e4567-e89b-12d3-a456-426614174000"
 }
 ```
 
@@ -659,7 +630,7 @@ GET /jobs/{job_id}/status
   "success": true,
   "message": "Job status retrieved",
   "data": {
-    "status": "running"
+    "status": "completed"
   }
 }
 ```
@@ -677,8 +648,8 @@ POST /jobs/batch/status
 ```json
 {
   "job_ids": [
-    "550e8400-e29b-41d4-a716-446655440000",
-    "550e8400-e29b-41d4-a716-446655440001"
+    "123e4567-e89b-12d3-a456-426614174000",
+    "456e7890-e89b-12d3-a456-426614174111"
   ]
 }
 ```
@@ -689,13 +660,13 @@ POST /jobs/batch/status
   "success": true,
   "message": "Batch job status retrieved",
   "data": {
-    "550e8400-e29b-41d4-a716-446655440000": {
+    "123e4567-e89b-12d3-a456-426614174000": {
       "status": "completed",
-      "updated_at": "2024-01-01T10:01:30Z"
+      "updated_at": "2024-01-01T12:01:23Z"
     },
-    "550e8400-e29b-41d4-a716-446655440001": {
+    "456e7890-e89b-12d3-a456-426614174111": {
       "status": "running",
-      "updated_at": "2024-01-01T10:00:45Z"
+      "updated_at": "2024-01-01T12:00:45Z"
     }
   }
 }
@@ -721,9 +692,9 @@ GET /jobs/minimal?limit=50&offset=0
   "message": "Minimal jobs retrieved",
   "data": [
     {
-      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "id": "123e4567-e89b-12d3-a456-426614174000",
       "status": "completed",
-      "updated_at": "2024-01-01T10:01:30Z"
+      "updated_at": "2024-01-01T12:01:23Z"
     }
   ]
 }
@@ -747,9 +718,9 @@ GET /jobs/{job_id}/logs
   "success": true,
   "message": "Job logs retrieved",
   "data": [
-    "Job 550e8400-e29b-41d4-a716-446655440000 created at 2024-01-01T10:00:00Z",
+    "Job 123e4567-e89b-12d3-a456-426614174000 created at 2024-01-01T12:00:00Z",
     "Current status: completed",
-    "Last updated: 2024-01-01T10:01:30Z",
+    "Last updated: 2024-01-01T12:01:23Z",
     "Result available: 284 characters"
   ]
 }
@@ -968,9 +939,9 @@ GET /config/agents
   "success": true,
   "message": "Agent configurations retrieved",
   "configs": {
-    "simple_example": {
-      "name": "Simple Example Agent",
-      "description": "Simple prompt processing agent",
+    "simple_prompt": {
+      "name": "Simple Prompt Agent",
+      "description": "A simple agent that processes text prompts using any available LLM provider",
       "profile": "balanced",
       "performance_mode": "balanced",
       "enabled": true
@@ -993,10 +964,10 @@ GET /config/agents/{agent_name}
 ```json
 {
   "success": true,
-  "message": "Configuration retrieved for agent: simple_example",
+  "message": "Configuration retrieved for agent: simple_prompt",
   "config": {
-    "name": "Simple Example Agent",
-    "description": "Simple prompt processing agent",
+    "name": "Simple Prompt Agent",
+    "description": "A simple agent that processes text prompts using any available LLM provider",
     "profile": "balanced",
     "performance_mode": "balanced",
     "enabled": true,
@@ -1032,9 +1003,9 @@ PUT /config/agents/{agent_name}
 ```json
 {
   "success": true,
-  "message": "Configuration updated for agent: simple_example",
+  "message": "Configuration updated for agent: simple_prompt",
   "config": {
-    "name": "Simple Example Agent",
+    "name": "Simple Prompt Agent",
     "profile": "fast",
     "performance_mode": "speed",
     "timeout_seconds": 60,
@@ -1087,14 +1058,14 @@ curl http://localhost:8000/health
 curl http://localhost:8000/agents
 
 # Get agent schema for form generation
-curl http://localhost:8000/agents/simple_example/schema
+curl http://localhost:8000/agents/simple_prompt/schema
 
 # Validate job data
 curl -X POST http://localhost:8000/jobs/validate \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "agent_identifier": "simple_example",
+    "agent_identifier": "simple_prompt",
     "data": {"prompt": "Test prompt", "max_tokens": 500}
   }'
 
@@ -1103,7 +1074,7 @@ curl -X POST http://localhost:8000/jobs \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "agent_identifier": "simple_example",
+    "agent_identifier": "simple_prompt",
     "data": {"prompt": "Write a story", "max_tokens": 1500},
     "priority": 5,
     "tags": ["creative"]

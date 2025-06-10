@@ -1,6 +1,6 @@
 """
 Pydantic models for request/response validation and serialization.
-Core models for the AI Agent Template framework v2.0.
+Core models for the AI Agent Platform framework v1.0.
 
 Job data models are now embedded in individual agent files using the @job_model decorator.
 Updated to use generic string fields instead of hardcoded agent/job type enums.
@@ -262,7 +262,7 @@ class HealthResponse(BaseModel):
         json_schema_extra={
             "example": {
                 "status": "healthy",
-                "version": "2.0.0",
+                "version": "1.0.0",
                 "environment": "development",
                 "cors_origins": 3,
                 "timestamp": "2024-01-01T10:00:00Z"

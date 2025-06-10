@@ -4,7 +4,7 @@
 
 ## Configuration Overview
 
-The AI Agent Template uses multiple configuration files for different aspects of the system:
+The AI Agent Platform uses multiple configuration files for different aspects of the system:
 
 ```
 ├── Root Level Configuration
@@ -34,7 +34,7 @@ The AI Agent Template uses multiple configuration files for different aspects of
 
 ```json
 {
-  "name": "agent-template",
+  "name": "ai-agent-platform",
   "version": "1.0.0",
   "scripts": {
     "test": "npm run test:frontend && npm run test:backend && npm run test:e2e",
@@ -367,7 +367,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
 VITE_API_URL=http://localhost:8000
 
 # Application Settings
-VITE_APP_NAME=AI Agent Template
+VITE_APP_NAME=AI Agent Platform
 VITE_APP_VERSION=1.0.0
 
 # Feature Flags
@@ -381,7 +381,7 @@ VITE_ENABLE_DEBUG=true
 **Purpose**: DigitalOcean App Platform deployment
 
 ```yaml
-name: ai-agent-template
+name: ai-agent-platform
 services:
 - name: backend
   source_dir: /backend

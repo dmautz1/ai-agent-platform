@@ -78,7 +78,7 @@ class TestEnvironmentSettings(unittest.TestCase):
             settings = Settings()
             
             # Test defaults (note: .env file may override some values)
-            self.assertIn("AI Agent Template", settings.app_name)  # Allow for API suffix
+            self.assertIn("AI Agent Platform", settings.app_name)  # Allow for API suffix
             # Version comes from .env file, just verify it's a valid version string
             self.assertRegex(settings.app_version, r'^\d+\.\d+\.\d+$')  # Accept any valid version
             self.assertEqual(settings.environment, Environment.DEVELOPMENT)
@@ -94,8 +94,8 @@ class TestEnvironmentSettings(unittest.TestCase):
         """Test environment variable overrides"""
         os.environ.update({
             'ENVIRONMENT': 'PRODUCTION',
-            'APP_NAME': 'Custom Agent Template',
-            'APP_VERSION': '3.0.0',
+            'APP_NAME': 'AI Agent Platform',
+            'APP_VERSION': '1.0.0',
             'DEBUG': 'true',
             'HOST': '127.0.0.1',
             'PORT': '9000',
@@ -111,8 +111,8 @@ class TestEnvironmentSettings(unittest.TestCase):
         
         # Test overridden values
         self.assertEqual(settings.environment, Environment.PRODUCTION)
-        self.assertEqual(settings.app_name, "Custom Agent Template")
-        self.assertEqual(settings.app_version, "3.0.0")
+        self.assertEqual(settings.app_name, "AI Agent Platform")
+        self.assertEqual(settings.app_version, "1.0.0")
         self.assertTrue(settings.debug)
         self.assertEqual(settings.host, "127.0.0.1")
         self.assertEqual(settings.port, 9000)

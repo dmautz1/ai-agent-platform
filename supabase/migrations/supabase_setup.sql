@@ -1,5 +1,5 @@
 -- ============================================================================
--- AI Agent Template MVP v1.0 - Complete Database Setup
+-- AI Agent Platform MVP v1.0 - Complete Database Setup
 -- ============================================================================
 -- Description: Consolidated migration that creates the complete database schema
 --              from scratch for the MVP v1.0. This includes all tables, indexes,

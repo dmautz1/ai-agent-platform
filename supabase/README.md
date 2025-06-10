@@ -69,7 +69,7 @@ SELECT * FROM job_stats;
 If setup completed successfully, you'll see:
 
 ```
-✅ AI Agent Template MVP v1.0 database setup completed successfully!
+✅ AI Agent Platform MVP v1.0 database setup completed successfully!
 📊 Tables created: jobs
 📈 Views created: job_stats  
 🔒 RLS enabled with user-scoped policies

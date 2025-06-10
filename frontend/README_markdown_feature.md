@@ -75,4 +75,4 @@ When agents return markdown content, users see:
 - Provides fallback styling for maximum compatibility
 - Full TypeScript support with proper typing
 
-This enhancement makes the Agent Template much more powerful for content generation and documentation workflows! 
+This enhancement makes the Agent Framework much more powerful for content generation and documentation workflows! 

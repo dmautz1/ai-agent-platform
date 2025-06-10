@@ -1,6 +1,6 @@
 # AI Agent Platform
 
-> **Production-Ready AI Agent Framework** - Build, deploy, and scale intelligent agents with multi-provider AI support
+> **Production-Ready AI Agent Platform** - Build, deploy, and scale intelligent agents with multi-provider AI support
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/%3C%2F%3E-TypeScript-%230074c1.svg)](https://www.typescriptlang.org/)
@@ -289,7 +289,8 @@ docker-compose up --build
 ### Example Agent
 ```python
 from pydantic import BaseModel, Field
-from agent import SelfContainedAgent, AgentExecutionResult
+from agent_framework import SelfContainedAgent, job_model
+from agent import AgentExecutionResult
 
 @job_model
 class MyAgentJobData(BaseModel):
@@ -298,12 +299,15 @@ class MyAgentJobData(BaseModel):
 
 class MyAgent(SelfContainedAgent):
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = "My Custom Agent"
+        super().__init__(
+            name="my_custom_agent",  # Explicit name - this is the primary identifier
+            description="My custom agent for text processing",
+            **kwargs
+        )
 
     async def _execute_job_logic(self, job_data: MyAgentJobData):
         # Your agent logic here
-        result = await self.llm.query(
+        result = await self.llm_service.query(
             prompt=job_data.input_text,
             temperature=job_data.temperature
         )

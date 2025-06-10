@@ -1,5 +1,5 @@
 """
-Configuration Module - Central configuration management for the AI Agent Template
+Configuration Module - Central configuration management for the AI Agent Platform
 
 This module provides comprehensive configuration management for:
 - Agent configuration with profiles and performance modes

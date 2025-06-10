@@ -5,7 +5,7 @@
 ## Table of Contents
 
 - [Architecture Overview](#architecture-overview)
-- [Agent Framework Design](#agent-framework-design)
+- [Agent Framework Design](#agent-platform-design)
 - [BaseAgent vs SelfContainedAgent](#baseagent-vs-selfcontainedagent)
 - [LLM Provider Integration](#llm-provider-integration)
 - [API and Routing Layer](#api-and-routing-layer)

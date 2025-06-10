@@ -75,7 +75,7 @@ Welcome to the AI Agent Platform documentation! This platform provides a complet
 ### Architecture
 - **[Platform Architecture](architecture/agent-architecture.md)** - Understanding the dual-agent system  
 - **[System Architecture](architecture/system-overview.md)** - High-level system design
-- **[Agent Framework](architecture/agent-framework.md)** - Agent system architecture
+- **[Agent Framework](architecture/agent-platform.md)** - Agent system architecture
 - **[Job Processing](architecture/job-result-handling.md)** - Job execution and results
 - **[Database Schema](architecture/database-schema.md)** - Database design
 
@@ -124,7 +124,7 @@ Welcome to the AI Agent Platform documentation! This platform provides a complet
 - **[Error Handling](api/error-handling.md)** - API error responses
 
 ### Agent API
-- **[Agent Framework API](api/agent-framework.md)** - Agent development API
+- **[Agent Framework API](api/agent-platform.md)** - Agent development API
 - **[Job Management](api/job-management.md)** - Job execution API
 - **[Provider Integration](api/provider-integration.md)** - AI provider API
 

@@ -109,24 +109,17 @@ class TestBaseAgent:
         return TestAgent
     
     def test_base_agent_initialization(self, test_agent_class):
-        """Test base agent initialization"""
-        agent = test_agent_class(
-            name="test_agent",
-            description="Test agent description",
-            model="gemini-1.5-pro"
-        )
+        """Test basic agent initialization"""
+        agent = test_agent_class(name="test", description="Test agent")
         
-        assert agent.name == "test_agent"
-        assert agent.description == "Test agent description"
-        assert agent.model == "gemini-1.5-pro"
-        assert not agent.is_initialized
-    
-    def test_agent_identifier_property(self, test_agent_class):
-        """Test agent identifier derivation"""
-        agent = test_agent_class(name="test", description="Test")
-        
-        # Should convert "TestAgent" to "test"
-        assert agent.agent_identifier == "test"
+        assert agent.name == "test"
+        assert agent.description == "Test agent"
+        assert agent.is_initialized == False
+        assert agent.execution_count == 0
+        assert agent.last_execution_time is None
+        assert agent.agent_config is not None
+        assert hasattr(agent, '_llm_service')
+        assert hasattr(agent, '_db_client')
     
     @pytest.mark.asyncio
     async def test_agent_initialization_method(self, test_agent_class):
@@ -284,7 +277,7 @@ class TestBaseAgentInfo:
             
             assert info["name"] == "info_test"
             assert info["description"] == "Information test agent"
-            assert info["agent_identifier"] == "test"  # From TestAgent class name
+            assert info["agent_identifier"] == "info_test"  # Should match the explicit name
             assert info["model"] == "gemini-1.5-pro"
             assert info["is_initialized"] == False
             assert info["execution_count"] == 0

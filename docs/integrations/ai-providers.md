@@ -124,7 +124,11 @@ from services.llm_service import get_unified_llm_service
 
 class MyAgent(SelfContainedAgent):
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(
+            name="my_agent",  # Explicit name - this is the primary identifier
+            description="My custom AI agent",
+            **kwargs
+        )
         self.llm = get_unified_llm_service()
     
     async def _execute_job_logic(self, job_data):
@@ -163,6 +167,13 @@ class MyJobData(BaseModel):
         return v
 
 class MyAgent(SelfContainedAgent):
+    def __init__(self, **kwargs):
+        super().__init__(
+            name="my_agent",  # Explicit name - this is the primary identifier
+            description="My custom AI agent with provider selection",
+            **kwargs
+        )
+    
     async def _execute_job_logic(self, job_data: MyJobData):
         result = await self.llm.query(
             prompt=job_data.prompt,

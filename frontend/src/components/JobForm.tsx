@@ -474,23 +474,30 @@ const FormField: React.FC<{
             <Controller
               name="model"
               control={control}
-              render={({ field: modelField }) => (
-                <LLMSelector
-                  selectedProvider={providerField.value as string}
-                  selectedModel={modelField.value as string}
-                  onProviderChange={(provider) => {
-                    providerField.onChange(provider);
-                    onFieldChange?.(name, provider);
-                  }}
-                  onModelChange={(model) => {
-                    modelField.onChange(model);
-                    onFieldChange?.('model', model);
-                  }}
-                  disabled={disabled}
-                  showLabels={true}
-                  className="space-y-4"
-                />
-              )}
+              render={({ field: modelField }) => {
+                // Memoized callbacks to prevent re-renders
+                const handleProviderChange = React.useCallback((provider: string) => {
+                  providerField.onChange(provider);
+                  onFieldChange?.(name, provider);
+                }, [providerField.onChange, onFieldChange, name]);
+
+                const handleModelChange = React.useCallback((model: string) => {
+                  modelField.onChange(model);
+                  onFieldChange?.('model', model);
+                }, [modelField.onChange, onFieldChange]);
+
+                return (
+                  <LLMSelector
+                    selectedProvider={providerField.value as string}
+                    selectedModel={modelField.value as string}
+                    onProviderChange={handleProviderChange}
+                    onModelChange={handleModelChange}
+                    disabled={disabled}
+                    showLabels={true}
+                    className="space-y-4"
+                  />
+                );
+              }}
             />
           )}
         />
@@ -974,8 +981,8 @@ export function JobForm({ agentId, onJobCreated }: DynamicJobFormProps) {
     }
   };
 
-  // Real-time field validation
-  const validateField = (fieldName: string, value: unknown) => {
+  // Validate individual field
+  const validateField = useCallback((fieldName: string, value: unknown) => {
     if (!primarySchema) return;
     
     const fieldSchema = primarySchema.properties[fieldName];
@@ -996,7 +1003,7 @@ export function JobForm({ agentId, onJobCreated }: DynamicJobFormProps) {
       return {
         ...prev,
         fieldErrors: newFieldErrors,
-        hasErrors: Object.keys(newFieldErrors).length > 0 || prev.globalErrors.length > 0
+        hasErrors: Object.keys(newFieldErrors).length > 0
       };
     });
     
@@ -1004,12 +1011,12 @@ export function JobForm({ agentId, onJobCreated }: DynamicJobFormProps) {
     if (!validationError && errors[fieldName]) {
       clearErrors(fieldName);
     }
-  };
+  }, [primarySchema, clearErrors, errors]);
 
   // Handle field changes with real-time validation
-  const handleFieldChange = (fieldName: string, value: unknown) => {
+  const handleFieldChange = useCallback((fieldName: string, value: unknown) => {
     validateField(fieldName, value);
-  };
+  }, [validateField]);
 
   // Validate entire form
   const validateForm = () => {

@@ -1,7 +1,7 @@
 """
 DeepSeek Configuration Module
 
-This module handles DeepSeek configuration and authentication for the AI Agent Template.
+This module handles DeepSeek configuration and authentication for the AI Agent Platform.
 Provides clean integration with DeepSeek's AI services.
 """
 

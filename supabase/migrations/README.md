@@ -1,4 +1,4 @@
-# Database Migrations for AI Agent Template
+# Database Migrations for AI Agent Platform
 
 ## MVP v1.0 Setup
 
@@ -177,11 +177,11 @@ Before deploying to production:
 If the migration runs successfully, you should see:
 
 ```
-NOTICE: AI Agent Template MVP v1.0 database setup completed successfully!
+NOTICE: AI Agent Platform MVP v1.0 database setup completed successfully!
 NOTICE: Tables created: jobs
 NOTICE: Views created: job_stats
 NOTICE: RLS enabled with user-scoped policies
 NOTICE: All indexes and triggers configured
 ```
 
-Your database is now ready for the AI Agent Template MVP v1.0! 🚀 
+Your database is now ready for the AI Agent Platform MVP v1.0! 🚀 

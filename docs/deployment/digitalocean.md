@@ -4,7 +4,7 @@
 
 ## Overview
 
-DigitalOcean App Platform provides a managed deployment solution perfect for the AI Agent Template:
+DigitalOcean App Platform provides a managed deployment solution perfect for the AI Agent Platform:
 
 - **Automatic builds** from GitHub
 - **Managed databases** via Supabase
@@ -33,7 +33,7 @@ ls -la .do/app.yaml
 If missing, create `.do/app.yaml`:
 
 ```yaml
-name: ai-agent-template
+name: ai-agent-platform
 services:
 - name: backend
   source_dir: /backend
@@ -328,7 +328,7 @@ jobs:
       - name: Deploy to DigitalOcean
         uses: digitalocean/app_action@v1
         with:
-          app_name: ai-agent-template
+          app_name: ai-agent-platform
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 ```
 

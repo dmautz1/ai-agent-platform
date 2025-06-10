@@ -4,7 +4,7 @@
 
 ## Overview
 
-The `scripts/` directory contains automated deployment tools for the AI Agent Template:
+The `scripts/` directory contains automated deployment tools for the AI Agent Platform:
 
 - **`deploy.sh`** - Unified deployment script for DigitalOcean App Platform with comprehensive automation, error handling, and monitoring
 
@@ -35,7 +35,7 @@ The `scripts/` directory contains automated deployment tools for the AI Agent Te
    SUPABASE_SERVICE_KEY=your-supabase-service-key
    GOOGLE_API_KEY=your-google-ai-api-key
    JWT_SECRET=your-32-character-secret
-   GITHUB_REPO=your-username/ai-agent-template
+   GITHUB_REPO=your-username/ai-agent-platform
    ```
 
 ### Basic Deployment
@@ -148,7 +148,7 @@ JWT_SECRET=your-32-character-random-secret
 
 ```bash
 # GitHub Configuration
-GITHUB_REPO=your-username/ai-agent-template
+GITHUB_REPO=your-username/ai-agent-platform
 
 # Security Configuration
 TRUSTED_HOSTS=yourdomain.com,www.yourdomain.com
@@ -178,7 +178,7 @@ nano .env
 The deployment script uses `.do/app.yaml` for DigitalOcean App Platform configuration. Key placeholders that get replaced:
 
 - `your-domain.com` → Your custom domain
-- `your-github-username/ai-agent-template` → Your GitHub repository
+- `your-github-username/ai-agent-platform` → Your GitHub repository
 - Environment-specific values based on `--env` flag
 
 ### Automatic Configuration Updates
@@ -214,7 +214,7 @@ Solution: Run 'doctl auth init' and provide your API token
 
 **App Creation Failed:**
 ```bash
-Error: App with name 'ai-agent-template' already exists
+Error: App with name 'ai-agent-platform' already exists
 Solution: Use --name option to specify different name or --force-create to overwrite
 ```
 

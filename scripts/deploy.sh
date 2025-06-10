@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# AI Agent Template - Unified Deployment Script for DigitalOcean App Platform
-# Version: 2.0
+# AI Agent Platform - Unified Deployment Script for DigitalOcean App Platform
+# Version: 1.0
 # Description: Automated deployment script with comprehensive error handling and monitoring
 
 set -e  # Exit on any error
@@ -76,7 +76,7 @@ show_progress() {
 # Usage information
 show_usage() {
     cat << EOF
-AI Agent Template - DigitalOcean Deployment Script v2.0
+AI Agent Platform - DigitalOcean Deployment Script v1.0
 
 USAGE:
     $0 [OPTIONS] [COMMAND]
@@ -369,7 +369,7 @@ update_app_config() {
     # Update GitHub repo if specified
     if [ -n "$GITHUB_REPO" ]; then
         log "DEBUG" "Setting GitHub repo to: $GITHUB_REPO"
-        sed -i.bak "s/your-github-username\/ai-agent-template/$GITHUB_REPO/g" "$temp_config"
+        sed -i.bak "s/your-github-username\/ai-agent-platform/$GITHUB_REPO/g" "$temp_config"
     fi
     
     echo "$temp_config"
@@ -644,7 +644,7 @@ deploy_app() {
 
 # Main execution
 main() {
-    echo -e "${PURPLE}AI Agent Template - DigitalOcean Deployment Script v2.0${NC}"
+    echo -e "${PURPLE}AI Agent Platform - DigitalOcean Deployment Script v1.0${NC}"
     echo "=================================================="
     
     parse_args "$@"

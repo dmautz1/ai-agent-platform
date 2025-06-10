@@ -1,1 +1,1 @@
-"""Integration tests for the AI Agent Template backend.""" 
+"""Integration tests for the AI Agent Platform backend.""" 

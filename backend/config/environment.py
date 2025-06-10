@@ -1,7 +1,7 @@
 """
 Environment Configuration Module
 
-This module handles environment-specific configuration for the AI Agent Template.
+This module handles environment-specific configuration for the AI Agent Platform.
 Supports development, staging, and production environments with proper validation.
 """
 
@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     
     # Application settings
     app_name: str = Field(default="AI Agent Platform", description="Application name")
-    app_version: str = Field(default="2.0.0", description="Application version")
+    app_version: str = Field(default="1.0.0", description="Application version")
     debug: bool = Field(default=False, description="Debug mode")
     
     # Server settings

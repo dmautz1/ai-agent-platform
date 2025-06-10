@@ -1,5 +1,5 @@
 -- ============================================================================
--- AI Agent Template MVP v1.0 - Quick Database Setup Script
+-- AI Agent Platform MVP v1.0 - Quick Database Setup Script
 -- ============================================================================
 -- This script sets up the complete database schema for the MVP v1.0
 -- Run this in your Supabase SQL Editor for instant setup
@@ -89,7 +89,7 @@ BEGIN
         RAISE NOTICE '📊 Tables: jobs (created)';
         RAISE NOTICE '📈 Views: job_stats (created)';
         RAISE NOTICE '🔒 Security: % RLS policies active', policies_count;
-        RAISE NOTICE '🚀 Ready for AI Agent Template MVP v1.0!';
+        RAISE NOTICE '🚀 Ready for AI Agent Platform MVP v1.0!';
     ELSE
         RAISE WARNING '⚠️ Setup incomplete - please check for errors above';
         IF NOT table_exists THEN

@@ -1,5 +1,5 @@
 """
-Mixins package for AI Agent Template
+Mixins package for AI Agent Platform
 
 This package provides reusable mixins for agent functionality.
 """

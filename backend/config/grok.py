@@ -1,7 +1,7 @@
 """
 Grok Configuration Module
 
-This module handles Grok (xAI) configuration and authentication for the AI Agent Template.
+This module handles Grok (xAI) configuration and authentication for the AI Agent Platform.
 Provides clean integration with xAI's Grok services.
 """
 

@@ -1,7 +1,7 @@
 """
 Anthropic Configuration Module
 
-This module handles Anthropic (Claude) configuration and authentication for the AI Agent Template.
+This module handles Anthropic (Claude) configuration and authentication for the AI Agent Platform.
 Provides clean integration with Anthropic's Claude services.
 """
 

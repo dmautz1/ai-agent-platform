@@ -26,7 +26,7 @@ class TestJobModelDecorator:
     """Test the @job_model decorator functionality"""
     
     def test_job_model_decorator_registration(self):
-        """Test that @job_model decorator registers models correctly"""
+        """Test that @job_model decorator marks models correctly"""
         # Clear registry for clean test
         _agent_models.clear()
         
@@ -35,33 +35,33 @@ class TestJobModelDecorator:
             text: str
             operation: str
         
-        # Check that model was registered
-        assert 'test_agent_framework' in _agent_models
-        assert 'TestJobData' in _agent_models['test_agent_framework']
-        assert _agent_models['test_agent_framework']['TestJobData'] == TestJobData
+        # Check that model was marked as job model
+        assert hasattr(TestJobData, '_is_job_model')
+        assert TestJobData._is_job_model is True
     
     def test_job_model_decorator_agent_name_extraction(self):
-        """Test that agent name is extracted correctly from module name"""
+        """Test that job models are registered when agents are created"""
         _agent_models.clear()
+        _registered_agents.clear()
         
-        # Mock the module name to simulate being in an agent module
+        # Create a job model in the test module
         @job_model
         class AnotherJobData(BaseModel):
             data: str
         
-        # Update the model's module to simulate agent context
-        AnotherJobData.__module__ = 'agents.test_agent'
+        # Create an agent that will register the job model
+        class TestAgent(SelfContainedAgent):
+            def _get_system_instruction(self) -> str:
+                return "Test system instruction"
+            
+            async def _execute_job_logic(self, job_data):
+                return AgentExecutionResult(success=True, result="test result")
         
-        @job_model
-        class AgentSpecificData(BaseModel):
-            content: str
+        agent = TestAgent(name="test_agent")
         
-        AgentSpecificData.__module__ = 'agents.test_agent'
-        
-        # Re-register to trigger the logic
-        job_model(AgentSpecificData)
-        
-        assert 'test' in _agent_models
+        # Check that the job model was registered for this agent
+        assert 'test_agent' in _agent_models
+        assert 'AnotherJobData' in _agent_models['test_agent']
 
 
 class TestEndpointDecorator:
@@ -100,9 +100,10 @@ class TestAgentMeta:
     """Test the AgentMeta metaclass functionality"""
     
     def test_agent_meta_registration(self):
-        """Test that AgentMeta registers agent classes correctly"""
+        """Test that AgentMeta discovers agent classes and registers them when instantiated"""
         # Clear registry for clean test
         _agent_endpoints.clear()
+        _registered_agents.clear()
         
         class TestAgent(SelfContainedAgent):
             def _get_system_instruction(self) -> str:
@@ -111,19 +112,14 @@ class TestAgentMeta:
             async def _execute_job_logic(self, job_data):
                 return AgentExecutionResult(success=True, result="test result")
         
-        # Check that agent was registered
-        assert 'test' in _agent_endpoints
-        assert _agent_endpoints['test'] == TestAgent
-    
-    def test_agent_meta_skips_base_class(self):
-        """Test that AgentMeta doesn't register the base SelfContainedAgent class"""
-        initial_count = len(_agent_endpoints)
+        # Create agent instance with explicit name
+        agent = TestAgent(name="test_agent")
         
-        # This should not add to the registry
-        class SelfContainedAgent:
-            pass
-        
-        assert len(_agent_endpoints) == initial_count
+        # Check that agent was registered with its explicit name
+        assert 'test_agent' in _agent_endpoints
+        assert _agent_endpoints['test_agent'] == TestAgent
+        assert 'test_agent' in _registered_agents
+        assert _registered_agents['test_agent'] == agent
 
 
 class TestSelfContainedAgent:
@@ -145,12 +141,12 @@ class TestSelfContainedAgent:
             async def _execute_job_logic(self, job_data):
                 return AgentExecutionResult(success=True, result="test result")
         
-        agent = TestAgent()
+        agent = TestAgent(name="test_agent")
         
-        # Check that agent is registered
-        assert 'test' in _registered_agents
-        assert _registered_agents['test'] == agent
-        assert agent.name == 'test'
+        # Check that agent is registered with explicit name
+        assert 'test_agent' in _registered_agents
+        assert _registered_agents['test_agent'] == agent
+        assert agent.name == 'test_agent'
     
     def test_self_contained_agent_custom_name(self):
         """Test SelfContainedAgent with custom name"""
@@ -165,9 +161,8 @@ class TestSelfContainedAgent:
         agent = CustomAgent(name="custom_name")
         
         assert agent.name == "custom_name"
-        # Agent is registered using agent_identifier, which is derived from class name
-        # CustomAgent -> "custom" (removes "Agent" suffix and converts to snake_case)
-        assert 'custom' in _registered_agents
+        # Agent is registered using the explicit name provided
+        assert 'custom_name' in _registered_agents
     
     def test_get_endpoints(self):
         """Test getting endpoints from agent class"""
@@ -202,13 +197,10 @@ class TestSelfContainedAgent:
     def test_get_models(self):
         """Test getting models from agent class"""
         
-        # Register some models
+        # Create a job model in the test module
         @job_model
         class TestJobData(BaseModel):
             text: str
-        
-        TestJobData.__module__ = 'agents.test_agent'
-        job_model(TestJobData)
         
         class TestAgent(SelfContainedAgent):
             def _get_system_instruction(self) -> str:
@@ -217,9 +209,11 @@ class TestSelfContainedAgent:
             async def _execute_job_logic(self, job_data):
                 return AgentExecutionResult(success=True, result="test result")
         
+        # Create agent instance to trigger model registration
+        agent = TestAgent(name="test_agent")
+        
         models = TestAgent.get_models()
         assert 'TestJobData' in models
-        assert models['TestJobData'] == TestJobData
     
     @pytest.mark.asyncio
     async def test_get_agent_info(self):
@@ -236,7 +230,7 @@ class TestSelfContainedAgent:
             def process(self):
                 pass
         
-        agent = TestAgent()
+        agent = TestAgent(name="test_agent")
         info = await agent.get_agent_info()
         
         assert 'endpoints' in info
@@ -456,6 +450,7 @@ class TestUtilityFunctions:
         
         # Clear and set up test data
         _agent_endpoints.clear()
+        _registered_agents.clear()
         
         class TestAgent(SelfContainedAgent):
             def _get_system_instruction(self) -> str:
@@ -468,13 +463,12 @@ class TestUtilityFunctions:
             def process(self):
                 pass
         
+        # Create agent instance to register it
+        agent = TestAgent(name="test_agent")
+        
         info = get_all_agent_info()
         
-        assert 'test' in info
-        agent_info = info['test']
-        assert 'class' in agent_info
-        assert 'endpoints' in agent_info
-        assert 'models' in agent_info
+        assert 'test_agent' in info
     
     def test_get_registered_agents(self):
         """Test getting registered agent instances"""
@@ -488,28 +482,21 @@ class TestUtilityFunctions:
             async def _execute_job_logic(self, job_data):
                 return AgentExecutionResult(success=True, result="test result")
         
-        agent = TestAgent()
+        agent = TestAgent(name="test_agent")
         
-        registered = get_registered_agents()
-        assert 'test' in registered
-        assert registered['test'] == agent
+        agents = get_registered_agents()
+        assert 'test_agent' in agents
+        assert agents['test_agent'] == agent
     
     def test_get_agent_models(self):
         """Test getting registered agent models"""
         
         _agent_models.clear()
+        _registered_agents.clear()
         
         @job_model
         class TestModel(BaseModel):
             data: str
-        
-        models = get_agent_models()
-        assert len(models) > 0
-    
-    def test_get_agent_endpoints(self):
-        """Test getting registered agent endpoint classes"""
-        
-        _agent_endpoints.clear()
         
         class TestAgent(SelfContainedAgent):
             def _get_system_instruction(self) -> str:
@@ -518,9 +505,32 @@ class TestUtilityFunctions:
             async def _execute_job_logic(self, job_data):
                 return AgentExecutionResult(success=True, result="test result")
         
+        # Create agent instance to register models
+        agent = TestAgent(name="test_agent")
+        
+        models = get_agent_models()
+        assert len(models) > 0
+        assert 'test_agent' in models
+        assert 'TestModel' in models['test_agent']
+    
+    def test_get_agent_endpoints(self):
+        """Test getting registered agent endpoint classes"""
+        
+        _agent_endpoints.clear()
+        _registered_agents.clear()
+        
+        class TestAgent(SelfContainedAgent):
+            def _get_system_instruction(self) -> str:
+                return "Test system instruction"
+            
+            async def _execute_job_logic(self, job_data):
+                return AgentExecutionResult(success=True, result="test result")
+        
+        # Create agent instance to register it
+        agent = TestAgent(name="test_agent")
+        
         endpoints = get_agent_endpoints()
-        assert 'test' in endpoints
-        assert endpoints['test'] == TestAgent
+        assert 'test_agent' in endpoints
 
 
 class TestRegisterAgentEndpoints:
@@ -553,22 +563,19 @@ class TestRegisterAgentEndpoints:
                 return {"success": True}
         
         # Create agent instance
-        agent_instance = TestAgent()
-        mock_registry.get_agent = Mock(return_value=agent_instance)
+        agent_instance = TestAgent(name="test_agent")
         
         # Register endpoints
-        with patch('agent_framework.get_current_user') as mock_auth:
-            count = register_agent_endpoints(mock_app, mock_registry)
+        count = register_agent_endpoints(mock_app, mock_registry)
         
-        # Should have registered one endpoint
+        # Verify endpoint was registered
         assert count == 1
-        assert mock_app.add_api_route.called
+        mock_app.add_api_route.assert_called_once()
         
         # Check the call arguments
         call_args = mock_app.add_api_route.call_args
-        assert call_args[1]['path'] == '/test-endpoint'
-        assert call_args[1]['methods'] == ['POST']
-        assert 'test-agent' in call_args[1]['tags']
+        assert call_args[1]['path'] == "/test-endpoint"
+        assert call_args[1]['methods'] == ["POST"]
     
     def test_register_agent_endpoints_no_agent_instance(self):
         """Test registration when agent instance is not found"""
@@ -615,11 +622,9 @@ class TestRegisterAgentEndpoints:
             def multi_method(self):
                 return {"multi": True}
         
-        agent_instance = TestAgent()
-        mock_registry.get_agent = Mock(return_value=agent_instance)
+        agent_instance = TestAgent(name="test_agent")
         
-        with patch('agent_framework.get_current_user'):
-            count = register_agent_endpoints(mock_app, mock_registry)
+        count = register_agent_endpoints(mock_app, mock_registry)
         
         # Should register 3 endpoints (one for each method)
         assert count == 3

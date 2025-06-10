@@ -1,1 +1,1 @@
-# Tests package for the AI Agent Template backend 
+# Tests package for the AI Agent Platform backend 
