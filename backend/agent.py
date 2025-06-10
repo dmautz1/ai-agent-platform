@@ -1,32 +1,28 @@
 """
-Base Agent Implementation for AI Agent Template
+Base Agent Module
 
-This module provides the base agent class that integrates with Google ADK
-and serves as the foundation for specific agent implementations.
+This module provides the base agent interface and utilities for the AI Agent Platform.
+Focused on clean, flexible agent development with unified LLM service integration.
 """
 
-import asyncio
-import logging
 import uuid
+import asyncio
 from abc import ABC, abstractmethod
-from datetime import datetime
-from typing import Dict, Any, Optional, List, Union
-from enum import Enum
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Any
 
-from google.adk.agents import Agent
-from config.adk import get_adk_config, create_agent
-from models import JobType, JobStatus, AgentType, JobData
+from config.agent import AgentConfig, PerformanceMode, AgentProfile
+from models import JobStatus, JobDataBase
 from database import DatabaseClient
 from logging_system import get_logger, get_performance_logger
-from config.agent_config import get_agent_config, AgentConfig
 
-# Initialize loggers
 logger = get_logger(__name__)
 perf_logger = get_performance_logger()
 
-
 class AgentExecutionResult:
-    """Result of agent execution"""
+    """
+    Represents the result of an agent job execution.
+    """
     
     def __init__(
         self,
@@ -34,77 +30,82 @@ class AgentExecutionResult:
         result: Optional[str] = None,
         error_message: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        execution_time: Optional[float] = None
+        execution_time: Optional[float] = None,
+        result_format: Optional[str] = None
     ):
         self.success = success
         self.result = result
         self.error_message = error_message
         self.metadata = metadata or {}
         self.execution_time = execution_time
-        self.timestamp = datetime.utcnow()
-    
+        self.result_format = result_format
+
     def to_dict(self) -> Dict[str, Any]:
-        """Convert result to dictionary"""
+        """Convert result to dictionary format."""
         return {
             "success": self.success,
             "result": self.result,
             "error_message": self.error_message,
             "metadata": self.metadata,
             "execution_time": self.execution_time,
-            "timestamp": self.timestamp.isoformat()
+            "result_format": self.result_format
         }
-
 
 class BaseAgent(ABC):
     """
-    Base agent class that provides common functionality for all AI agents.
+    Abstract base class for all agents in the system.
     
-    This class integrates with Google ADK and provides:
-    - Agent lifecycle management
-    - Job execution with proper error handling
-    - Database integration for job status updates
-    - Logging and performance monitoring
-    - Configuration management
+    Provides common functionality and enforces implementation of required methods.
+    Uses the unified LLM service for provider-agnostic AI access across all supported providers.
     """
     
     def __init__(
         self,
         name: str,
         description: str,
-        agent_type: AgentType = AgentType.google_adk,
         model: Optional[str] = None,
-        tools: Optional[List] = None,
+        result_format: Optional[str] = None,
         **kwargs
     ):
         """
         Initialize the base agent.
         
         Args:
-            name: Name of the agent
-            description: Description of the agent's purpose
-            agent_type: Type of agent (default: google_adk)
-            model: Optional model override
-            tools: List of tools/functions available to the agent
-            **kwargs: Additional configuration options
+            name: Agent name (required - this is the primary identifier)
+            description: Agent description
+            model: Model name to use
+            result_format: Default result format for this agent
+            **kwargs: Additional agent configuration
         """
         self.name = name
         self.description = description
-        self.agent_type = agent_type
         self.model = model
-        self.tools = tools or []
-        self.config = kwargs
+        self.result_format = result_format
         
-        # Load agent configuration
-        self.agent_config = get_agent_config(name)
+        # Create agent configuration
+        profile = kwargs.get('profile', AgentProfile.BALANCED)
+        performance_mode = kwargs.get('performance_mode', PerformanceMode.BALANCED)
+        
+        self.agent_config = AgentConfig(
+            name=name,
+            description=description,
+            profile=profile,
+            performance_mode=performance_mode,
+            result_format=result_format
+        )
         
         # Override with any explicit parameters
         if model:
             self.agent_config.model.model_name = model
         if description:
             self.agent_config.description = description
+        if result_format:
+            self.agent_config.result_format = result_format
         
-        # Initialize Google ADK agent
-        self._adk_agent: Optional[Agent] = None
+        # Initialize unified LLM service for provider-agnostic access
+        self._llm_service: Optional['UnifiedLLMService'] = None
+        
+        # Initialize database client
         self._db_client: Optional[DatabaseClient] = None
         
         # Agent state
@@ -117,36 +118,34 @@ class BaseAgent(ABC):
                    performance_mode=self.agent_config.performance_mode.value)
     
     async def initialize(self) -> None:
-        """Initialize the agent with Google ADK and database connections."""
+        """Initialize the agent with database connections."""
         if self.is_initialized:
             logger.warning(f"Agent {self.name} is already initialized")
             return
         
         try:
-            # Use configuration for model selection
-            model_name = self.agent_config.model.model_name or self.model
-            
-            # Initialize Google ADK agent
-            instruction = self._get_system_instruction()
-            self._adk_agent = create_agent(
-                name=self.name,
-                description=self.agent_config.description or self.description,
-                instruction=instruction,
-                tools=self.tools,
-                model=model_name
-            )
-            
             # Initialize database client
             self._db_client = DatabaseClient()
             
             self.is_initialized = True
             logger.info(f"Successfully initialized agent: {self.name}",
-                       model=model_name,
                        timeout=self.agent_config.execution.timeout_seconds)
             
         except Exception as e:
             logger.error(f"Failed to initialize agent {self.name}: {e}")
             raise
+    
+    def get_llm_service(self):
+        """
+        Get the unified LLM service for provider-agnostic AI access.
+        
+        Returns:
+            UnifiedLLMService instance with access to all configured providers
+        """
+        if self._llm_service is None:
+            from services.llm_service import get_unified_llm_service
+            self._llm_service = get_unified_llm_service()
+        return self._llm_service
     
     @abstractmethod
     def _get_system_instruction(self) -> str:
@@ -162,7 +161,7 @@ class BaseAgent(ABC):
         pass
     
     @abstractmethod
-    async def _execute_job_logic(self, job_data: JobData) -> AgentExecutionResult:
+    async def _execute_job_logic(self, job_data: JobDataBase) -> AgentExecutionResult:
         """
         Execute the specific job logic for this agent type.
         
@@ -177,33 +176,10 @@ class BaseAgent(ABC):
         """
         pass
     
-    def _validate_job_data(self, job_data: JobData) -> bool:
-        """
-        Validate that the job data is appropriate for this agent.
-        
-        Args:
-            job_data: Job data to validate
-            
-        Returns:
-            True if valid, False otherwise
-        """
-        supported_types = self.get_supported_job_types()
-        return job_data.job_type in supported_types
-    
-    @abstractmethod
-    def get_supported_job_types(self) -> List[JobType]:
-        """
-        Get the list of job types supported by this agent.
-        
-        Returns:
-            List of supported JobType values
-        """
-        pass
-    
     async def execute_job(
         self,
         job_id: str,
-        job_data: JobData,
+        job_data: JobDataBase,
         user_id: Optional[str] = None
     ) -> AgentExecutionResult:
         """
@@ -220,16 +196,7 @@ class BaseAgent(ABC):
         if not self.is_initialized:
             await self.initialize()
         
-        # Validate job data
-        if not self._validate_job_data(job_data):
-            error_msg = f"Job type {job_data.job_type} not supported by {self.__class__.__name__}"
-            logger.error(error_msg, job_id=job_id)
-            return AgentExecutionResult(
-                success=False,
-                error_message=error_msg
-            )
-        
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         execution_id = str(uuid.uuid4())
         
         logger.info(
@@ -237,7 +204,6 @@ class BaseAgent(ABC):
             job_id=job_id,
             execution_id=execution_id,
             agent_name=self.name,
-            job_type=job_data.job_type.value,
             user_id=user_id
         )
         
@@ -251,17 +217,17 @@ class BaseAgent(ABC):
                 result = await self._execute_job_logic(job_data)
             
             # Calculate execution time
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
             result.execution_time = execution_time
             
             # Update agent state
             self.execution_count += 1
-            self.last_execution_time = datetime.utcnow()
+            self.last_execution_time = datetime.now(timezone.utc)
             
             # Update job status based on result
             if self._db_client:
                 if result.success:
-                    await self._update_job_status(job_id, JobStatus.completed, result.result)
+                    await self._update_job_status(job_id, JobStatus.completed, result.result, result_format=result.result_format)
                 else:
                     await self._update_job_status(job_id, JobStatus.failed, error_message=result.error_message)
             
@@ -276,7 +242,7 @@ class BaseAgent(ABC):
             return result
             
         except Exception as e:
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
             error_message = f"Unexpected error during job execution: {str(e)}"
             
             logger.error(
@@ -305,137 +271,162 @@ class BaseAgent(ABC):
         job_id: str,
         status: JobStatus,
         result: Optional[str] = None,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        result_format: Optional[str] = None
     ) -> None:
         """
-        Update job status in the database.
+        Update job status in database.
         
         Args:
             job_id: Job identifier
             status: New job status
-            result: Optional result data
-            error_message: Optional error message
+            result: Job result (if completed successfully)
+            error_message: Error message (if failed)
+            result_format: Format of the result data
         """
         if not self._db_client:
             logger.warning("Database client not initialized, cannot update job status")
             return
         
         try:
-            update_data = {"status": status.value, "updated_at": datetime.utcnow().isoformat()}
+            update_data = {
+                "status": status.value,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
             
             if result is not None:
                 update_data["result"] = result
-            
             if error_message is not None:
                 update_data["error_message"] = error_message
+            if result_format is not None:
+                update_data["result_format"] = result_format
             
             await self._db_client.update_job(job_id, update_data)
+            logger.debug(f"Updated job {job_id} status to {status.value}")
             
         except Exception as e:
-            logger.error(f"Failed to update job status: {e}", job_id=job_id, status=status.value)
-            raise
+            logger.error(f"Failed to update job status: {e}")
     
     async def get_agent_info(self) -> Dict[str, Any]:
         """
-        Get information about the agent.
+        Get comprehensive agent information.
         
         Returns:
-            Dictionary containing agent information including configuration
+            Dictionary with agent information
         """
-        return {
+        from config.environment import get_settings
+        settings = get_settings()
+        
+        agent_info = {
             "name": self.name,
-            "description": self.agent_config.description or self.description,
-            "agent_type": self.agent_type.value,
-            "model": self.agent_config.model.model_name or self.model,
-            "supported_job_types": [jt.value for jt in self.get_supported_job_types()],
+            "description": self.description,
+            "agent_identifier": self.name,
+            "model": self.model,
+            "result_format": self.result_format,
             "is_initialized": self.is_initialized,
             "execution_count": self.execution_count,
             "last_execution_time": self.last_execution_time.isoformat() if self.last_execution_time else None,
-            "tools_count": len(self.tools),
-            "configuration": {
+            "config": {
                 "profile": self.agent_config.profile.value,
                 "performance_mode": self.agent_config.performance_mode.value,
-                "enabled": self.agent_config.enabled,
                 "timeout_seconds": self.agent_config.execution.timeout_seconds,
                 "max_retries": self.agent_config.execution.max_retries,
-                "enable_caching": self.agent_config.execution.enable_caching,
-                "temperature": self.agent_config.model.temperature,
-                "max_tokens": self.agent_config.model.max_tokens,
-                "log_level": self.agent_config.logging.log_level,
-                "rate_limit_per_minute": self.agent_config.security.rate_limit_per_minute
+                "model_name": self.agent_config.model.model_name
+            },
+            "llm": {
+                "default_provider": settings.default_llm_provider,
+                "unified_service_available": True
             }
         }
+        
+        return agent_info
     
     async def health_check(self) -> Dict[str, Any]:
         """
-        Perform a health check on the agent.
+        Perform agent health check.
         
         Returns:
-            Dictionary containing health status
+            Health status information
         """
         health_status = {
-            "healthy": True,
             "agent_name": self.name,
+            "status": "healthy",
             "is_initialized": self.is_initialized,
-            "last_execution_time": self.last_execution_time.isoformat() if self.last_execution_time else None,
             "execution_count": self.execution_count,
+            "last_execution_time": self.last_execution_time.isoformat() if self.last_execution_time else None,
             "checks": {}
         }
         
-        # Check Google ADK agent
-        try:
-            if self._adk_agent:
-                health_status["checks"]["adk_agent"] = "healthy"
-            else:
-                health_status["checks"]["adk_agent"] = "not_initialized"
-                health_status["healthy"] = False
-        except Exception as e:
-            health_status["checks"]["adk_agent"] = f"error: {str(e)}"
-            health_status["healthy"] = False
-        
         # Check database connection
+        if self._db_client:
+            try:
+                db_health = await self._db_client.health_check()
+                health_status["checks"]["database"] = "healthy" if db_health else "unhealthy"
+            except Exception as e:
+                health_status["checks"]["database"] = f"error: {str(e)}"
+        else:
+            health_status["checks"]["database"] = "not_initialized"
+        
+        # Check LLM service (unified service that handles all providers)
         try:
-            if self._db_client:
-                # Test database connectivity
-                await self._db_client.test_connection()
-                health_status["checks"]["database"] = "healthy"
+            llm_service = self.get_llm_service()
+            available_providers = llm_service.get_available_providers()
+            if available_providers:
+                health_status["checks"]["llm_service"] = {
+                    "status": "healthy",
+                    "default_provider": llm_service._default_provider,
+                    "available_providers": available_providers,
+                    "provider_count": len(available_providers)
+                }
             else:
-                health_status["checks"]["database"] = "not_initialized"
-                health_status["healthy"] = False
+                health_status["checks"]["llm_service"] = {
+                    "status": "error",
+                    "error": "No LLM providers available"
+                }
         except Exception as e:
-            health_status["checks"]["database"] = f"error: {str(e)}"
-            health_status["healthy"] = False
+            health_status["checks"]["llm_service"] = {
+                "status": "error",
+                "error": str(e)
+            }
+        
+        # Check for any failed status
+        failed_checks = []
+        for check_name, check_result in health_status["checks"].items():
+            if isinstance(check_result, str) and check_result not in ["healthy", "not_initialized"]:
+                failed_checks.append(check_name)
+            elif isinstance(check_result, dict) and check_result.get("status") != "healthy":
+                failed_checks.append(check_name)
+        
+        if failed_checks:
+            health_status["status"] = "degraded"
+            health_status["failed_checks"] = failed_checks
         
         return health_status
     
     async def cleanup(self) -> None:
         """Clean up agent resources."""
-        logger.info(f"Cleaning up agent: {self.name}")
-        
-        # Close database connection if exists
-        if self._db_client:
-            try:
+        try:
+            if self._db_client:
                 await self._db_client.close()
-            except Exception as e:
-                logger.error(f"Error closing database connection: {e}")
-        
-        self.is_initialized = False
-        logger.info(f"Agent cleanup completed: {self.name}")
+                self._db_client = None
+            
+            self.is_initialized = False
+            logger.info(f"Cleaned up agent: {self.name}")
+            
+        except Exception as e:
+            logger.error(f"Error during agent cleanup: {e}")
     
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(name='{self.name}', type='{self.agent_type.value}')"
+        return f"<{self.__class__.__name__}(name='{self.name}', model='{self.model}')>"
     
     def __str__(self) -> str:
         return f"{self.name} ({self.__class__.__name__})"
 
-
 class AgentRegistry:
-    """Registry to manage multiple agent instances"""
+    """Registry for managing agent instances"""
     
     def __init__(self):
         self._agents: Dict[str, BaseAgent] = {}
-        self._agent_types: Dict[JobType, List[str]] = {}
-        logger.info("Initialized AgentRegistry")
     
     def register_agent(self, agent: BaseAgent) -> None:
         """
@@ -445,67 +436,64 @@ class AgentRegistry:
             agent: Agent instance to register
         """
         if agent.name in self._agents:
-            logger.warning(f"Agent {agent.name} is already registered, overwriting")
+            logger.warning(f"Agent {agent.name} is already registered. Overriding.")
         
         self._agents[agent.name] = agent
-        
-        # Update job type mappings
-        for job_type in agent.get_supported_job_types():
-            if job_type not in self._agent_types:
-                self._agent_types[job_type] = []
-            if agent.name not in self._agent_types[job_type]:
-                self._agent_types[job_type].append(agent.name)
-        
         logger.info(f"Registered agent: {agent.name}")
     
-    def get_agent(self, name: str) -> Optional[BaseAgent]:
+    def unregister_agent(self, name: str) -> bool:
         """
-        Get an agent by name.
+        Unregister an agent from the registry.
         
         Args:
-            name: Agent name
+            name: Name of the agent to unregister
             
         Returns:
-            Agent instance or None if not found
+            True if agent was unregistered, False if not found
         """
-        return self._agents.get(name)
+        if name in self._agents:
+            agent = self._agents.pop(name)
+            logger.info(f"Unregistered agent: {name}")
+            return True
+        else:
+            logger.warning(f"Attempted to unregister non-existent agent: {name}")
+            return False
     
-    def get_agents_for_job_type(self, job_type: JobType) -> List[BaseAgent]:
-        """
-        Get all agents that support a specific job type.
-        
-        Args:
-            job_type: Job type to search for
-            
-        Returns:
-            List of agent instances supporting the job type
-        """
-        agent_names = self._agent_types.get(job_type, [])
-        return [self._agents[name] for name in agent_names if name in self._agents]
+    def get_agent(self, name: str) -> Optional[BaseAgent]:
+        """Get an agent instance by name."""
+        agent = self._agents.get(name)
+        if not agent:
+            logger.debug(f"Agent {name} not found in registry")
+        return agent
     
     def list_agents(self) -> List[str]:
         """Get list of all registered agent names."""
         return list(self._agents.keys())
     
+    def get_agents_by_type(self, agent_type: str) -> List[BaseAgent]:
+        """Get all agents of a specific type"""
+        return [
+            agent for agent in self._agents.values() 
+            if agent.__class__.__name__ == agent_type
+        ]
+    
     async def cleanup_all(self) -> None:
         """Cleanup all registered agents."""
         logger.info("Cleaning up all agents in registry")
         
+        cleanup_tasks = []
         for agent in self._agents.values():
-            try:
-                await agent.cleanup()
-            except Exception as e:
-                logger.error(f"Error cleaning up agent {agent.name}: {e}")
+            cleanup_tasks.append(agent.cleanup())
+        
+        if cleanup_tasks:
+            await asyncio.gather(*cleanup_tasks, return_exceptions=True)
         
         self._agents.clear()
-        self._agent_types.clear()
-        logger.info("Agent registry cleanup completed")
+        logger.info("All agents cleaned up")
 
-
-# Global agent registry instance
-agent_registry = AgentRegistry()
-
+# Global agent registry
+_agent_registry = AgentRegistry()
 
 def get_agent_registry() -> AgentRegistry:
     """Get the global agent registry instance."""
-    return agent_registry 
+    return _agent_registry 

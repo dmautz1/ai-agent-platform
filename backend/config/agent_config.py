@@ -19,9 +19,8 @@ from enum import Enum
 from pydantic import BaseModel, Field, validator
 
 from config.environment import get_settings
-from logging_system import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 class AgentProfile(str, Enum):
     """Predefined agent configuration profiles"""
@@ -93,6 +92,7 @@ class AgentConfig:
     profile: AgentProfile = AgentProfile.BALANCED
     performance_mode: AgentPerformanceMode = AgentPerformanceMode.BALANCED
     enabled: bool = True
+    result_format: Optional[str] = None
     
     # Sub-configurations
     execution: AgentExecutionConfig = field(default_factory=AgentExecutionConfig)
@@ -245,7 +245,7 @@ class AgentConfigManager:
     def _load_from_environment(self):
         """Load configuration overrides from environment variables"""
         # Pattern: AGENT_{AGENT_NAME}_{CONFIG_PATH}
-        # Example: AGENT_TEXT_PROCESSING_EXECUTION_TIMEOUT_SECONDS=120
+        # Example: AGENT_SIMPLE_PROMPT_EXECUTION_TIMEOUT_SECONDS=120
         
         for key, value in os.environ.items():
             if key.startswith("AGENT_"):

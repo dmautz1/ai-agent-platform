@@ -7,14 +7,17 @@ This framework allows agents to be completely self-contained with:
 - Automatic agent discovery and registration
 - Automatic endpoint registration with FastAPI
 - Built-in authentication and error handling
+- Clean service-based architecture
 """
 
 import inspect
 import json
 from typing import Dict, List, Any, Optional, Callable, Type, get_type_hints
 from functools import wraps
+from abc import ABCMeta
 from fastapi import HTTPException, Depends, Request
 from pydantic import BaseModel
+
 from agent import BaseAgent, AgentExecutionResult
 from auth import get_current_user
 from logging_system import get_logger, get_performance_logger
@@ -29,26 +32,19 @@ _registered_agents = {}
 
 def job_model(cls: Type[BaseModel]) -> Type[BaseModel]:
     """
-    Decorator to register a job data model for an agent.
+    Decorator to register a model as a job data model for an agent.
     
-    Usage:
-        @job_model
-        class MyJobData(BaseModel):
-            text: str
-            operation: str
+    The model will be registered when the agent instance is created.
+    
+    Args:
+        cls: The Pydantic model class to register
+        
+    Returns:
+        The same model class (unchanged)
     """
-    # Extract agent name from the module where the model is defined
-    module_name = cls.__module__
-    if 'agents.' in module_name:
-        agent_name = module_name.split('.')[-1].replace('_agent', '')
-    else:
-        agent_name = 'unknown'
+    # Mark the class as a job model for later registration
+    cls._is_job_model = True
     
-    if agent_name not in _agent_models:
-        _agent_models[agent_name] = {}
-    
-    _agent_models[agent_name][cls.__name__] = cls
-    logger.debug(f"Registered job model {cls.__name__} for agent {agent_name}")
     return cls
 
 def endpoint(path: str, methods: List[str] = ["POST"], auth_required: bool = True, public: bool = False):
@@ -73,8 +69,8 @@ def endpoint(path: str, methods: List[str] = ["POST"], auth_required: bool = Tru
         return func
     return decorator
 
-class AgentMeta(type):
-    """Metaclass to automatically register agents and collect their endpoints"""
+class AgentMeta(ABCMeta):
+    """Metaclass to collect agent endpoints and models"""
     
     def __new__(mcs, name, bases, namespace):
         cls = super().__new__(mcs, name, bases, namespace)
@@ -84,31 +80,83 @@ class AgentMeta(type):
             hasattr(base, '__name__') and 'SelfContainedAgent' in base.__name__ 
             for base in bases
         ):
-            # Register the agent class
-            agent_name = name.replace('Agent', '').lower()
-            _agent_endpoints[agent_name] = cls
-            
-            logger.info(f"Registered agent class {name} as {agent_name}")
+            # Store the agent class for later registration when instances are created
+            logger.debug(f"Discovered agent class: {name}")
         
         return cls
 
 class SelfContainedAgent(BaseAgent, metaclass=AgentMeta):
     """
-    Base class for self-contained agents with automatic endpoint registration.
+    Base class for self-contained agents with automatic endpoint registration and LLM-agnostic AI access.
     
     Agents extending this class can define their own:
     - Job data models using @job_model decorator
     - API endpoints using @endpoint decorator
     - All business logic in the same file
+    - Agents can use any AI provider via the unified LLM service
     """
     
-    def __init__(self, name: str = None, **kwargs):
-        if name is None:
-            name = self.__class__.__name__.replace('Agent', '').lower()
-        super().__init__(name=name, **kwargs)
+    def __init__(self, name: str, description: str = None, **kwargs):
+        if description is None:
+            description = f"{name.title()} agent - self-contained agent with embedded endpoints"
         
-        # Register this instance
-        _registered_agents[name] = self
+        super().__init__(name=name, description=description, **kwargs)
+        
+        # Register this instance using the explicit name
+        _registered_agents[self.name] = self
+        _agent_endpoints[self.name] = self.__class__
+        
+        # Register job models defined in the same module
+        self._register_job_models()
+    
+    def _register_job_models(self):
+        """Register job models defined in the same module as this agent"""
+        import sys
+        import inspect
+        
+        # Get the module where this agent class is defined
+        agent_module = sys.modules[self.__class__.__module__]
+        
+        # Initialize models dict for this agent if not exists
+        if self.name not in _agent_models:
+            _agent_models[self.name] = {}
+        
+        # Find all job models in the module
+        for attr_name in dir(agent_module):
+            attr = getattr(agent_module, attr_name)
+            
+            # Check if it's a job model
+            if (isinstance(attr, type) and 
+                issubclass(attr, BaseModel) and 
+                hasattr(attr, '_is_job_model')):
+                
+                _agent_models[self.name][attr.__name__] = attr
+                logger.debug(f"Registered job model {attr.__name__} for agent {self.name}")
+        
+        # Also look in the calling frame's locals (for test cases)
+        try:
+            frame = inspect.currentframe()
+            # Go up the call stack to find job models
+            for _ in range(5):  # Look up to 5 frames up
+                frame = frame.f_back
+                if frame is None:
+                    break
+                
+                # Check locals and globals in this frame
+                for name, obj in {**frame.f_locals, **frame.f_globals}.items():
+                    if (isinstance(obj, type) and 
+                        issubclass(obj, BaseModel) and 
+                        hasattr(obj, '_is_job_model') and
+                        obj.__name__ not in _agent_models[self.name]):
+                        
+                        _agent_models[self.name][obj.__name__] = obj
+                        logger.debug(f"Registered job model {obj.__name__} for agent {self.name} (from frame)")
+        except Exception as e:
+            # If frame inspection fails, just continue
+            logger.debug(f"Frame inspection failed: {e}")
+        finally:
+            # Clean up frame reference
+            del frame
     
     @classmethod
     def get_endpoints(cls) -> List[Dict[str, Any]]:
@@ -126,8 +174,13 @@ class SelfContainedAgent(BaseAgent, metaclass=AgentMeta):
     @classmethod
     def get_models(cls) -> Dict[str, Type[BaseModel]]:
         """Get all models defined for this agent"""
-        agent_name = cls.__name__.replace('Agent', '').lower()
-        return _agent_models.get(agent_name, {})
+        # Find the agent instance to get its explicit name
+        for agent_name, agent_instance in _registered_agents.items():
+            if isinstance(agent_instance, cls):
+                return _agent_models.get(agent_name, {})
+        
+        # Fallback: return empty dict if no models found
+        return {}
     
     async def get_agent_info(self) -> Dict[str, Any]:
         """Extended agent info including endpoints and models"""
@@ -143,8 +196,8 @@ class SelfContainedAgent(BaseAgent, metaclass=AgentMeta):
                 for ep in self.get_endpoints()
             ],
             'models': list(self.get_models().keys()),
-            'framework_version': '2.0',
-            'self_contained': True
+            'framework_version': '1.0',
+            'self_contained': True,
         })
         return base_info
 
@@ -207,16 +260,11 @@ def register_agent_endpoints(app, agent_registry):
     
     registered_count = 0
     
-    for agent_name, agent_class in _agent_endpoints.items():
-        # Get agent instance from registry
-        agent_instance = agent_registry.get_agent(agent_name) or agent_registry.get_agent(f"default_{agent_name}")
-        
-        if not agent_instance:
-            logger.warning(f"Agent instance not found for {agent_name}")
-            continue
-        
+    for agent_name, agent_instance in _registered_agents.items():        
         # Register each endpoint
+        agent_class = agent_instance.__class__
         endpoints = agent_class.get_endpoints()
+        
         for endpoint_info in endpoints:
             path = endpoint_info['path']
             methods = endpoint_info['methods']

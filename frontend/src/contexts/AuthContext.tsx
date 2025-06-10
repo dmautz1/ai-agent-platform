@@ -1,21 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { User, AuthTokens, LoginRequest, RegisterRequest } from '@/lib/types';
-
-// Supabase configuration
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Missing Supabase environment variables');
-}
-
-const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
+import type { Session } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
+import type { User, AuthTokens, LoginRequest, RegisterRequest } from '@/lib/models';
 
 interface AuthState {
   user: User | null;
   loading: boolean;
-  session: any;
+  session: Session | null;
   tokens?: AuthTokens;
 }
 
@@ -28,6 +19,7 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -86,9 +78,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('auth_token', data.session.access_token);
 
       return { user, tokens };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Sign in error:', error);
-      throw new Error(error.message || 'Sign in failed');
+      const errorMessage = error instanceof Error ? error.message : 'Sign in failed';
+      throw new Error(errorMessage);
     }
   };
 
@@ -160,9 +153,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           expires_in: 0,
         }
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Sign up error:', error);
-      throw new Error(error.message || 'Sign up failed');
+      const errorMessage = error instanceof Error ? error.message : 'Sign up failed';
+      throw new Error(errorMessage);
     }
   };
 
@@ -180,7 +174,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Clear stored token
       localStorage.removeItem('auth_token');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Sign out error:', error);
       // Even if Supabase sign out fails, clear local state
       setAuthState({
@@ -236,14 +230,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         localStorage.removeItem('auth_token');
       }
-    } catch (error: any) {
-      console.error('Auth refresh error:', error);
-      setAuthState({
+    } catch (error: unknown) {
+      console.error('Refresh auth error:', error);
+      setAuthState(prevState => ({
+        ...prevState,
         user: null,
         loading: false,
         session: null,
         tokens: undefined,
-      });
+      }));
       localStorage.removeItem('auth_token');
     }
   };
@@ -253,9 +248,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshAuth();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event, session?.user?.email);
-      
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session && session.user) {
         const user: User = {
           id: session.user.id,

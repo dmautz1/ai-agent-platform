@@ -1,6 +1,6 @@
 # Testing Guide
 
-This document outlines the testing strategy and structure for the Agent Template application.
+This document outlines the testing strategy and structure for the Agent Framework application.
 
 ## Test Organization
 

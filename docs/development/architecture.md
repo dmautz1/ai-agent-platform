@@ -1,10 +1,10 @@
 # Architecture Overview
 
-> **System Design and Patterns** - Understanding the AI Agent Template architecture
+> **System Design and Patterns** - Understanding the AI Agent Platform architecture
 
 ## System Architecture
 
-The AI Agent Template follows a **modern full-stack architecture** with clear separation between frontend, backend, and data layers:
+The AI Agent Platform follows a **modern full-stack architecture** with clear separation between frontend, backend, and data layers:
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
@@ -55,7 +55,7 @@ backend/
 └── logging_system.py      # Structured logging
 ```
 
-## Self-Contained Agent Framework v2.0
+## Self-Contained Agent Framework v1.0
 
 ### Revolutionary Single-File Architecture
 
@@ -69,10 +69,12 @@ class MyJobData(BaseModel):
     text: str
 
 class MyAgent(SelfContainedAgent):
-    @endpoint("/my-agent/process", methods=["POST"])  # Embedded endpoint
-    async def process(self, request_data: dict, user: dict):
-        # Business logic here
-        pass
+    def __init__(self, **kwargs):
+        super().__init__(
+            name="my_agent",  # Explicit name - this is the primary identifier
+            description="My custom agent description",
+            **kwargs
+        )
 ```
 
 ### Key Framework Features
@@ -140,7 +142,7 @@ Agent File Created → Auto-Discovery → Model Registration → Endpoint Regist
 jobs (
   id UUID PRIMARY KEY,
   user_id UUID REFERENCES auth.users,
-  agent_type TEXT NOT NULL,
+  agent_identifier TEXT NOT NULL,
   status job_status NOT NULL,
   job_data JSONB,
   result JSONB,

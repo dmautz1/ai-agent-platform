@@ -1,8 +1,8 @@
-# Agent Customization Guide
+# Agent Development Guide
 
 > **Complete Guide to Building Custom AI Agents** - From basic setup to advanced patterns
 
-This guide teaches you how to create custom AI agents using the Self-Contained Agent Framework v2.0. Perfect for developers who want to build specialized AI functionality for their applications.
+This guide teaches you how to create custom AI agents using the Self-Contained Agent Framework v1.0. Perfect for developers who want to build specialized AI functionality for their applications.
 
 ## Table of Contents
 
@@ -24,7 +24,7 @@ This guide teaches you how to create custom AI agents using the Self-Contained A
 - Python 3.8+
 - Basic understanding of Python and FastAPI
 - Google AI Studio API key (for AI functionality)
-- AI Agent Template setup (see [README.md](README.md))
+- AI Agent Platform setup (see [README.md](README.md))
 
 ### 5-Minute Agent Creation
 
@@ -38,20 +38,20 @@ My First Agent - A simple example agent
 from typing import List, Dict, Any
 from pydantic import BaseModel, Field
 from agent_framework import SelfContainedAgent, endpoint, job_model, execute_agent_job, validate_job_data
-from models import JobType
 from agent import AgentExecutionResult
 
 @job_model
 class MyJobData(BaseModel):
-    input_text: str = Field(..., description="Text to process")
+    prompt: str = Field(..., description="Text to process")
     operation: str = Field(default="greet", description="Operation to perform")
 
 class MyFirstAgent(SelfContainedAgent):
     def __init__(self, **kwargs):
-        super().__init__(description="My first custom agent", **kwargs)
-    
-    def get_supported_job_types(self) -> List[JobType]:
-        return [JobType.custom]
+        super().__init__(
+            name="my_first_agent",  # Explicit name - this is the primary identifier
+            description="My first custom agent",
+            **kwargs
+        )
     
     @endpoint("/my-first-agent/process", methods=["POST"], auth_required=True)
     async def process(self, request_data: dict, user: dict):
@@ -60,9 +60,9 @@ class MyFirstAgent(SelfContainedAgent):
     
     async def _execute_job_logic(self, job_data: MyJobData) -> AgentExecutionResult:
         if job_data.operation == "greet":
-            result = f"Hello! You sent: {job_data.input_text}"
+            result = f"Hello! You sent: {job_data.prompt}"
         else:
-            result = f"Processed '{job_data.input_text}' with operation '{job_data.operation}'"
+            result = f"Processed '{job_data.prompt}' with operation '{job_data.operation}'"
         
         return AgentExecutionResult(
             success=True,
@@ -75,18 +75,68 @@ class MyFirstAgent(SelfContainedAgent):
 
 ## Framework Overview
 
-### Self-Contained Agent Framework v2.0
+### Self-Contained Agent Framework v1.0
 
-The framework uses a **single-file approach** where each agent contains:
+The platform uses a **dual-agent architecture** with two approaches:
+
+1. **SelfContainedAgent** - Zero-configuration rapid development framework
+2. **BaseAgent** - Maximum control for complex custom integrations
+
+The framework is **completely LLM-agnostic**, supporting 6+ AI providers through a unified interface.
+
+#### SelfContainedAgent - Recommended Approach
+
+The **single-file approach** where each agent contains:
 
 1. **Job Data Models** - Define input/output with `@job_model`
 2. **API Endpoints** - Create endpoints with `@endpoint`
 3. **Business Logic** - Implement core functionality
 4. **Configuration** - Agent-specific settings
 
+```python
+from services.llm_service import get_unified_llm_service
+
+@job_model
+class MyJobData(BaseModel):
+    prompt: str = Field(..., description="Text to process")
+    provider: Optional[str] = Field(default="google", description="AI provider to use")
+
+class MyAgent(SelfContainedAgent):
+    def __init__(self, **kwargs):
+        super().__init__(
+            name="my_agent",  # Explicit name - this is the primary identifier
+            description="My custom agent description",
+            **kwargs
+        )
+        self.llm = get_unified_llm_service()  # LLM-agnostic service
+    
+    @endpoint("/my-agent/process", methods=["POST"], auth_required=True)
+    async def process(self, request_data: dict, user: dict):
+        job_data = validate_job_data(request_data, MyJobData)
+        return await execute_agent_job(self, job_data, user["id"])
+    
+    async def _execute_job_logic(self, job_data):
+        # Works with any AI provider
+        result = await self.llm.query(
+            prompt=job_data.prompt,
+            provider=job_data.provider  # User's choice
+        )
+        return AgentExecutionResult(success=True, result=result)
+
+#### BaseAgent - Advanced Use Cases
+
+Use BaseAgent when you need:
+- Complex multi-step workflows
+- Custom database integrations  
+- Manual API endpoint management
+- Integration with external services
+
+**→ [Complete Architecture Guide](../architecture/agent-architecture.md)** for detailed comparison.
+
 ### Key Benefits
 
 - ✅ **Zero Configuration** - Drop in a file, it works
+- ✅ **LLM Provider Agnostic** - Supports Google AI, OpenAI, Anthropic, Grok, DeepSeek, Meta Llama
 - ✅ **Type Safety** - Full Pydantic validation
 - ✅ **Auto-Discovery** - Automatic registration
 - ✅ **Built-in Auth** - JWT authentication support
@@ -142,14 +192,12 @@ class MyAgentJobData(BaseModel):
 class MyAgent(SelfContainedAgent):
     def __init__(self, **kwargs):
         super().__init__(
+            name="my_agent",  # Explicit name - this is the primary identifier
             description="Description of what your agent does",
             **kwargs
         )
         # Initialize any agent-specific settings
         self.supported_operations = ["process", "analyze", "transform"]
-    
-    def get_supported_job_types(self) -> List[JobType]:
-        return [JobType.custom]  # or specific type like JobType.text_processing
 ```
 
 ### Step 4: Add Endpoints
@@ -242,26 +290,59 @@ class MultiOperationAgent(SelfContainedAgent):
 
 ### Pattern 3: AI-Powered Agent
 
-For agents using Google AI/ADK:
+For agents using any AI provider through the unified LLM service:
 
 ```python
 class AIAgent(SelfContainedAgent):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Option 1: Use the unified LLM service directly
+        self.llm_service = get_unified_llm_service()
+    
     async def _execute_job_logic(self, job_data):
-        # Get the ADK agent
-        adk_agent = await self.get_adk_agent()
-        
-        # Create prompt
-        prompt = f"Process this text: {job_data.input_text}"
-        
-        # Query AI model
-        response = await adk_agent.query(prompt)
+        # Use any AI provider through the unified interface
+        response = await self.llm_service.query(
+            prompt=f"Process this text: {job_data.prompt}",
+            provider=job_data.preferred_provider,  # User can choose provider
+            model=job_data.model,  # Optional specific model
+            temperature=job_data.temperature
+        )
         
         return AgentExecutionResult(
             success=True,
             result=response,
-            metadata={"model_used": self.agent_config.model.model_name}
+            metadata={
+                "provider": job_data.preferred_provider,
+                "model": job_data.model
+            }
         )
 ```
+
+**Alternative: Using BaseAgent's LLM Service Method**
+
+For BaseAgent subclasses, you can use the built-in method:
+
+```python
+class CustomBaseAgent(BaseAgent):
+    async def _execute_job_logic(self, job_data):
+        # Option 2: Use BaseAgent's get_llm_service() method
+        llm_service = self.get_llm_service()
+        
+        response = await llm_service.query(
+            prompt=job_data.prompt,
+            # Uses configured DEFAULT_LLM_PROVIDER if no provider specified
+            provider=job_data.provider if hasattr(job_data, 'provider') else None
+        )
+        
+        return AgentExecutionResult(success=True, result=response)
+```
+
+**Key Benefits:**
+- **Provider Agnostic** - Works with Google AI, OpenAI, Anthropic, Grok, DeepSeek, Meta Llama
+- **Configurable Default** - Uses `DEFAULT_LLM_PROVIDER` from environment config
+- **User Choice** - Let users select their preferred AI provider
+- **Automatic Fallbacks** - System handles provider failures gracefully
+- **Cost Optimization** - Route to most cost-effective provider based on requirements
 
 ### Pattern 4: External API Integration
 
@@ -275,7 +356,7 @@ class ExternalAPIAgent(SelfContainedAgent):
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 "https://api.example.com/process",
-                json={"data": job_data.input_data}
+                json={"data": job_data.prompt}
             ) as response:
                 result = await response.json()
         
@@ -447,7 +528,7 @@ def agent():
 @pytest.mark.asyncio
 async def test_process_data(agent):
     job_data = MyJobData(
-        input_text="test input",
+        prompt="test input",
         operation="process"
     )
     
@@ -459,7 +540,7 @@ async def test_process_data(agent):
 @pytest.mark.asyncio
 async def test_invalid_operation(agent):
     job_data = MyJobData(
-        input_text="test input",
+        prompt="test input",
         operation="invalid_operation"
     )
     
@@ -481,7 +562,7 @@ curl http://localhost:8000/my-agent/capabilities
 curl -X POST http://localhost:8000/my-agent/process \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"input_text": "test", "operation": "process"}'
+  -d '{"prompt": "test", "operation": "process"}'
 ```
 
 ### Debugging
@@ -496,7 +577,7 @@ logger = get_logger(__name__)
 class DebuggableAgent(SelfContainedAgent):
     async def _execute_job_logic(self, job_data):
         logger.info(f"Processing job with operation: {job_data.operation}")
-        logger.debug(f"Input data: {job_data.input_text[:100]}...")
+        logger.debug(f"Input data: {job_data.prompt[:100]}...")
         
         try:
             result = await self._process_data(job_data)
@@ -534,391 +615,3 @@ Configure your agent via files or environment variables:
   }
 }
 ```
-
-Or use environment variables:
-
-```bash
-export AGENT_MY_AGENT_EXECUTION_TIMEOUT_SECONDS=180
-export AGENT_MY_AGENT_CUSTOM_SETTINGS_MAX_ITEMS=100
-```
-
-### Deployment Checklist
-
-Before deploying your agent:
-
-- [ ] Test all endpoints manually
-- [ ] Write unit tests for core logic
-- [ ] Configure production settings
-- [ ] Set up monitoring and logging
-- [ ] Document API endpoints
-- [ ] Validate error handling
-- [ ] Check authentication requirements
-- [ ] Test with realistic data volumes
-
-## Best Practices
-
-### 1. Agent Design
-
-**Keep It Focused**
-```python
-# Good: Single responsibility
-class EmailValidatorAgent(SelfContainedAgent):
-    """Validates email addresses only"""
-    pass
-
-# Avoid: Multiple unrelated responsibilities
-class EverythingAgent(SelfContainedAgent):
-    """Validates emails, processes images, sends notifications..."""
-    pass
-```
-
-**Use Clear Naming**
-```python
-# Good: Descriptive names
-class DocumentSummarizerAgent(SelfContainedAgent):
-    @endpoint("/document-summarizer/summarize", ...)
-    async def summarize_document(self, ...):
-        pass
-
-# Avoid: Generic names
-class ProcessorAgent(SelfContainedAgent):
-    @endpoint("/processor/do", ...)
-    async def do_stuff(self, ...):
-        pass
-```
-
-### 2. Data Validation
-
-**Comprehensive Validation**
-```python
-@job_model
-class WellValidatedJobData(BaseModel):
-    # Field validation
-    text: str = Field(..., min_length=1, max_length=10000)
-    priority: int = Field(default=5, ge=1, le=10)
-    
-    # Custom validation
-    @validator('text')
-    def validate_text_content(cls, v):
-        if any(word in v.lower() for word in ['spam', 'malicious']):
-            raise ValueError('Text contains prohibited content')
-        return v
-    
-    # Configuration example
-    class Config:
-        schema_extra = {
-            "example": {
-                "text": "Sample text to process",
-                "priority": 5
-            }
-        }
-```
-
-### 3. Error Handling
-
-**Graceful Degradation**
-```python
-async def _execute_job_logic(self, job_data):
-    try:
-        # Primary processing method
-        return await self._primary_process(job_data)
-    except ExternalAPIError:
-        # Fallback to secondary method
-        logger.warning("Primary API failed, using fallback")
-        return await self._fallback_process(job_data)
-    except ValidationError as e:
-        # Clear error for client
-        return AgentExecutionResult(
-            success=False,
-            error_message=f"Invalid input: {str(e)}"
-        )
-    except Exception as e:
-        # Log details, return generic error
-        logger.error("Unexpected error", exc_info=True)
-        return AgentExecutionResult(
-            success=False,
-            error_message="Processing failed due to internal error"
-        )
-```
-
-### 4. Performance
-
-**Efficient Processing**
-```python
-class EfficientAgent(SelfContainedAgent):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # Initialize expensive resources once
-        self.model = self._load_model()
-        self.cache = {}
-    
-    async def _execute_job_logic(self, job_data):
-        # Check cache first
-        cache_key = self._get_cache_key(job_data)
-        if cache_key in self.cache:
-            return self.cache[cache_key]
-        
-        # Process and cache result
-        result = await self._actual_process(job_data)
-        self.cache[cache_key] = result
-        return result
-```
-
-### 5. Security
-
-**Input Sanitization**
-```python
-class SecureAgent(SelfContainedAgent):
-    async def _execute_job_logic(self, job_data):
-        # Sanitize inputs
-        clean_text = self._sanitize_input(job_data.input_text)
-        
-        # Validate size limits
-        if len(clean_text) > self.agent_config.security.max_input_size_bytes:
-            raise ValueError("Input too large")
-        
-        # Process safely
-        result = await self._safe_process(clean_text)
-        
-        # Sanitize output
-        clean_result = self._sanitize_output(result)
-        return AgentExecutionResult(success=True, result=clean_result)
-    
-    def _sanitize_input(self, text: str) -> str:
-        # Remove/escape potentially dangerous content
-        import html
-        return html.escape(text.strip())
-```
-
-## Common Patterns
-
-### Pattern: Workflow Agent
-
-For multi-step processes:
-
-```python
-class WorkflowAgent(SelfContainedAgent):
-    async def _execute_job_logic(self, job_data):
-        workflow_id = f"wf_{uuid.uuid4().hex[:8]}"
-        
-        try:
-            # Step 1: Validate input
-            await self._step_validate(job_data, workflow_id)
-            
-            # Step 2: Pre-process
-            preprocessed = await self._step_preprocess(job_data, workflow_id)
-            
-            # Step 3: Main processing
-            result = await self._step_main_process(preprocessed, workflow_id)
-            
-            # Step 4: Post-process
-            final_result = await self._step_postprocess(result, workflow_id)
-            
-            return AgentExecutionResult(
-                success=True,
-                result=final_result,
-                metadata={"workflow_id": workflow_id}
-            )
-        except Exception as e:
-            logger.error(f"Workflow {workflow_id} failed at step", exc_info=True)
-            raise
-```
-
-### Pattern: Batch Processor
-
-For handling multiple items:
-
-```python
-class BatchAgent(SelfContainedAgent):
-    @endpoint("/batch/process", methods=["POST"], auth_required=True)
-    async def batch_process(self, request_data: dict, user: dict):
-        items = request_data.get("items", [])
-        max_batch_size = self.agent_config.custom_settings.get("max_batch_size", 100)
-        
-        if len(items) > max_batch_size:
-            raise ValueError(f"Batch size {len(items)} exceeds limit {max_batch_size}")
-        
-        results = []
-        for i, item in enumerate(items):
-            try:
-                result = await self._process_single_item(item)
-                results.append({"index": i, "success": True, "result": result})
-            except Exception as e:
-                results.append({"index": i, "success": False, "error": str(e)})
-        
-        return {
-            "total_items": len(items),
-            "successful": sum(1 for r in results if r["success"]),
-            "failed": sum(1 for r in results if not r["success"]),
-            "results": results
-        }
-```
-
-### Pattern: Event-Driven Agent
-
-For reactive processing:
-
-```python
-class EventDrivenAgent(SelfContainedAgent):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.event_handlers = {
-            "user_action": self._handle_user_action,
-            "system_alert": self._handle_system_alert,
-            "data_update": self._handle_data_update
-        }
-    
-    @endpoint("/events/handle", methods=["POST"], auth_required=True)
-    async def handle_event(self, request_data: dict, user: dict):
-        event_type = request_data.get("event_type")
-        event_data = request_data.get("data", {})
-        
-        handler = self.event_handlers.get(event_type)
-        if not handler:
-            raise ValueError(f"Unknown event type: {event_type}")
-        
-        result = await handler(event_data, user)
-        return {
-            "event_type": event_type,
-            "processed_at": datetime.utcnow().isoformat(),
-            "result": result
-        }
-```
-
-## Troubleshooting
-
-### Agent Not Discovered
-
-**Problem**: Agent file exists but doesn't appear in `/agents` endpoint
-
-**Solutions**:
-1. Check file naming: Must end with `_agent.py`
-2. Ensure class inherits from `SelfContainedAgent`
-3. Check for import errors in agent file
-4. Restart the server
-
-```bash
-# Debug discovery
-curl http://localhost:8000/agents
-# Check logs for errors
-tail -f logs/app.log | grep agent
-```
-
-### Endpoints Not Working
-
-**Problem**: Agent discovered but endpoints return 404
-
-**Solutions**:
-1. Verify `@endpoint` decorator syntax
-2. Check method signature matches auth requirements
-3. Ensure agent class is properly instantiated
-
-```python
-# Correct endpoint signature
-@endpoint("/my-agent/process", methods=["POST"], auth_required=True)
-async def process(self, request_data: dict, user: dict):  # Note: both parameters
-    pass
-
-# For no-auth endpoints
-@endpoint("/my-agent/info", methods=["GET"], auth_required=False)
-async def get_info(self):  # Note: no user parameter
-    pass
-```
-
-### Validation Errors
-
-**Problem**: Request fails with validation errors
-
-**Solutions**:
-1. Check `@job_model` decorator is applied
-2. Verify request data matches model schema
-3. Test model validation independently
-
-```python
-# Test your model
-try:
-    data = MyJobData(input_text="test", operation="process")
-    print("Model validation passed")
-except ValidationError as e:
-    print(f"Validation failed: {e}")
-```
-
-### Performance Issues
-
-**Problem**: Agent responses are slow
-
-**Solutions**:
-1. Profile your code to find bottlenecks
-2. Implement caching for repeated operations
-3. Use async/await properly
-4. Optimize Google ADK calls
-
-```python
-import time
-
-async def _execute_job_logic(self, job_data):
-    start_time = time.time()
-    
-    try:
-        result = await self._process_data(job_data)
-        processing_time = time.time() - start_time
-        
-        logger.info(f"Processing completed in {processing_time:.2f}s")
-        return result
-    except Exception as e:
-        processing_time = time.time() - start_time
-        logger.error(f"Processing failed after {processing_time:.2f}s: {e}")
-        raise
-```
-
-### Memory Issues
-
-**Problem**: Agent consumes too much memory
-
-**Solutions**:
-1. Use generators for large datasets
-2. Process data in chunks
-3. Clear caches periodically
-4. Monitor memory usage
-
-```python
-class MemoryEfficientAgent(SelfContainedAgent):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.max_cache_size = 1000
-        self.cache = {}
-    
-    def _manage_cache(self):
-        if len(self.cache) > self.max_cache_size:
-            # Remove oldest entries
-            items = list(self.cache.items())
-            for key, _ in items[:len(items)//2]:
-                del self.cache[key]
-```
-
-## Next Steps
-
-### Learn More
-
-- **[API Documentation](API_DOCUMENTATION.md)** - Complete API reference
-- **[Agent Framework Details](backend/README_AGENT_FRAMEWORK_V2.md)** - Technical deep dive
-- **[Configuration Guide](backend/README_AGENT_CONFIG.md)** - Advanced configuration
-- **[Examples](backend/agents/)** - Study existing agent implementations
-
-### Contribute
-
-- Create agents for common use cases
-- Improve framework features
-- Add testing utilities
-- Write documentation
-
-### Get Help
-
-- Check existing agent implementations for patterns
-- Review the API documentation for endpoint details
-- Test your agents thoroughly before deployment
-- Use the interactive docs at `http://localhost:8000/docs`
-
----
-
-**Ready to build amazing AI agents?** Start with the quick start example and gradually add more sophisticated features as you learn the framework! 

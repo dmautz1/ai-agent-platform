@@ -243,10 +243,8 @@ test.describe('API Authentication and Error Handling', () => {
           'Authorization': `Bearer ${authToken}`
         },
         data: JSON.stringify({
-          agent_type: 'invalid_agent_type',
-          data: {
-            // Missing required fields
-          }
+          agent_identifier: 'simple_prompt',
+          data: { prompt: 'test' }
         })
       });
 
@@ -333,8 +331,8 @@ test.describe('API Authentication and Error Handling', () => {
           'Content-Type': 'text/plain'
         },
         data: JSON.stringify({
-          agent_type: 'text_processing',
-          data: { input_text: 'test' }
+          agent_identifier: 'simple_prompt',
+          data: { prompt: 'test' }
         })
       });
 

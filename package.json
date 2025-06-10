@@ -7,7 +7,7 @@
     "postcss": "^8.5.4",
     "tailwindcss": "^4.1.8"
   },
-  "name": "agent-template",
+  "name": "ai-agent-platform",
   "description": "> **Revolutionary Self-Contained Agent Framework** - Build AI agents with zero configuration",
   "version": "1.0.0",
   "main": "index.js",
@@ -56,13 +56,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dmautz1/ai-agent-template.git"
+    "url": "git+https://github.com/dmautz1/ai-agent-platform.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/dmautz1/ai-agent-template/issues"
+    "url": "https://github.com/dmautz1/ai-agent-platform/issues"
   },
-  "homepage": "https://github.com/dmautz1/ai-agent-template#readme"
+  "homepage": "https://github.com/dmautz1/ai-agent-platform#readme"
 }

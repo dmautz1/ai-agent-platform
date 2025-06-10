@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useJobPolling, useSingleJobPolling } from '../../src/lib/polling';
 import { api } from '../../src/lib/api';
-import type { Job } from '../../src/lib/types';
+import type { Job, JobStatus } from '../../src/lib/models';
 
 // Mock the API
 vi.mock('../../src/lib/api', () => ({
@@ -18,41 +18,41 @@ vi.mock('../../src/lib/api', () => ({
 const mockJobs: Job[] = [
   {
     id: 'job-1',
-    status: 'pending',
+    status: 'pending' as JobStatus,
     priority: 'normal',
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
     user_id: 'user-1',
     data: {
-      agent_type: 'text_processing',
+      agent_identifier: 'simple_prompt',
       title: 'Test Job 1',
-      input_text: 'Test content',
+      prompt: 'Test prompt content'
     },
   },
   {
     id: 'job-2',
-    status: 'running',
+    status: 'running' as JobStatus,
     priority: 'high',
     created_at: '2024-01-01T01:00:00Z',
     updated_at: '2024-01-01T01:00:00Z',
     user_id: 'user-1',
     data: {
-      agent_type: 'summarization',
+      agent_identifier: 'simple_prompt',
       title: 'Test Job 2',
-      input_text: 'Test content for summarization',
+      prompt: 'Test content for processing'
     },
   },
   {
     id: 'job-3',
-    status: 'completed',
+    status: 'completed' as JobStatus,
     priority: 'normal',
     created_at: '2024-01-01T02:00:00Z',
     updated_at: '2024-01-01T02:30:00Z',
     user_id: 'user-1',
     data: {
-      agent_type: 'web_scraping',
+      agent_identifier: 'simple_prompt',
       title: 'Test Job 3',
-      input_url: 'https://example.com',
+      prompt: 'Test URL content'
     },
   },
 ];
@@ -169,6 +169,22 @@ describe('Job Polling and Real-Time Updates Validation (Simplified)', () => {
       });
 
       expect(result.current.pollingState.isPolling).toBe(false);
+    });
+
+    it('should handle API error on initial load with null response', async () => {
+      const onUpdate = vi.fn();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(api.jobs.getAll).mockResolvedValueOnce(null as any);
+
+      const { result } = renderHook(() => useJobPolling(onUpdate));
+
+      await act(async () => {
+        await result.current.startPolling();
+      });
+
+      // Check that null responses are handled gracefully (no error should be set)
+      expect(result.current.pollingState.error).toBeNull();
+      expect(onUpdate).toHaveBeenCalledWith(null);
     });
   });
 
@@ -295,6 +311,7 @@ describe('Job Polling and Real-Time Updates Validation (Simplified)', () => {
 
     it('should handle null responses gracefully', async () => {
       const onUpdate = vi.fn();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       vi.mocked(api.jobs.getAll).mockResolvedValueOnce(null as any);
 
       const { result } = renderHook(() => useJobPolling(onUpdate));
@@ -310,7 +327,7 @@ describe('Job Polling and Real-Time Updates Validation (Simplified)', () => {
     it('should validate job status updates', async () => {
       const onUpdate = vi.fn();
       const { result } = renderHook(() => 
-        useJobPolling(onUpdate, { useLightweightPolling: true })
+        useJobPolling(onUpdate, { baseInterval: 2000 })
       );
 
       await act(async () => {
@@ -417,14 +434,12 @@ describe('Job Polling and Real-Time Updates Validation (Simplified)', () => {
       const onUpdate = vi.fn();
       const configs = [
         { baseInterval: 1000 },
-        { backgroundOptimization: false },
         { maxRetries: 10 },
-        { useLightweightPolling: false },
+        { persistKey: 'test_key' },
         {
           baseInterval: 3000,
-          backgroundOptimization: true,
           maxRetries: 5,
-          useLightweightPolling: true,
+          persistKey: 'test_polling',
         },
       ];
 
@@ -446,9 +461,23 @@ describe('Job Polling and Real-Time Updates Validation (Simplified)', () => {
 
       edgeCases.forEach(config => {
         expect(() => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           renderHook(() => useJobPolling(onUpdate, config as any));
         }).not.toThrow();
       });
+    });
+
+    it('should handle invalid polling configuration gracefully', () => {
+      const onUpdate = vi.fn();
+      const config = {
+        invalidOption: 'test'
+      };
+
+      // Should not throw an error when creating hook with invalid config
+      expect(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        renderHook(() => useJobPolling(onUpdate, config as any));
+      }).not.toThrow();
     });
   });
 }); 

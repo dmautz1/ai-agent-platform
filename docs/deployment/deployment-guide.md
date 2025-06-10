@@ -1,8 +1,8 @@
 # DigitalOcean App Platform Deployment Guide
 
-> **Complete Guide to Deploying AI Agent Template** - From setup to production
+> **Complete Guide to Deploying AI Agent Platform** - From setup to production
 
-This guide walks you through deploying the AI Agent Template to DigitalOcean App Platform using the included configuration file.
+This guide walks you through deploying the AI Agent Platform to DigitalOcean App Platform using the included configuration file.
 
 ## Quick Start with Deployment Script
 
@@ -70,13 +70,13 @@ For manual deployment or advanced configuration, follow the detailed steps below
 
 1. **Fork or Clone the Repository**:
    ```bash
-   git clone https://github.com/your-username/ai-agent-template.git
-   cd ai-agent-template
+   git clone https://github.com/your-username/ai-agent-platform.git
+   cd ai-agent-platform
    ```
 
 2. **Push to Your GitHub Repository**:
    ```bash
-   git remote set-url origin https://github.com/your-username/ai-agent-template.git
+   git remote set-url origin https://github.com/your-username/ai-agent-framwwork.git
    git push -u origin main
    ```
 
@@ -128,7 +128,7 @@ The deployment uses the provided `.do/app.yaml` configuration file. Update the f
 Replace in `.do/app.yaml`:
 ```yaml
 github:
-  repo: your-github-username/ai-agent-template  # Replace with your repo
+  repo: your-github-username/ai-agent-platform  # Replace with your repo
   branch: main
 ```
 
@@ -179,7 +179,7 @@ Update these in the DigitalOcean App Platform dashboard or in `.do/app.yaml`:
 ```yaml
 # Application Settings
 - key: APP_NAME
-  value: "AI Agent Template API"
+  value: "AI Agent Platform API"
 - key: ENVIRONMENT
   value: "production"
 - key: LOG_LEVEL
@@ -219,7 +219,7 @@ Update these in the DigitalOcean App Platform dashboard or in `.do/app.yaml`:
 
 2. **Connect Repository**:
    - Authorize DigitalOcean to access your GitHub
-   - Select your repository: `your-username/ai-agent-template`
+   - Select your repository: `your-username/ai-agent-platform`
    - Choose branch: `main`
 
 3. **Upload Configuration**:

@@ -1,21 +1,43 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { type Job } from '@/lib/api';
+import type { AgentInfo } from '@/lib/models';
 import { useJobPolling } from '@/lib/polling';
 import { useToast } from '@/components/ui/toast';
 import { useBreakpoint, responsivePadding, responsiveSpacing, touchButtonSizes } from '@/lib/responsive';
 import JobList from '@/components/JobList';
-import { JobForm } from '@/components/JobForm';
+import { JobCreationModal } from '@/components/JobCreationModal';
+import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, Activity, Clock, CheckCircle, XCircle, User, Wifi, WifiOff } from 'lucide-react';
+import { Plus, Activity, Clock, CheckCircle, XCircle, User, Wifi, WifiOff, Search, Pause, Play } from 'lucide-react';
 import { StatsGridLoading } from '@/components/ui/loading';
 import { ErrorMessage, AccessDeniedError } from '@/components/ui/error';
 import { cn } from '@/lib/utils';
 
+// Simple localStorage helper for recent agents
+const RECENT_AGENTS_KEY = 'recent_agents';
+const MAX_RECENT_AGENTS = 5;
+
+const getRecentAgents = (): string[] => {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_AGENTS_KEY) || '[]');
+  } catch {
+    return [];
+  }
+};
+
+const addRecentAgent = (agentId: string) => {
+  const recent = getRecentAgents().filter(id => id !== agentId);
+  recent.unshift(agentId);
+  localStorage.setItem(RECENT_AGENTS_KEY, JSON.stringify(recent.slice(0, MAX_RECENT_AGENTS)));
+};
+
 export const DashboardPage: React.FC = () => {
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const toast = useToast();
   const { isMobile } = useBreakpoint();
   const [stats, setStats] = useState({
@@ -29,6 +51,9 @@ export const DashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('');
+  const [showAgentDirectory, setShowAgentDirectory] = useState(false);
+  const [recentAgents, setRecentAgents] = useState<string[]>([]);
 
   // Calculate stats from jobs array
   const updateStats = useCallback((jobsData: Job[]) => {
@@ -50,47 +75,105 @@ export const DashboardPage: React.FC = () => {
     setError('');
   }, [updateStats]);
 
-  // Initialize polling
-  const { pollingState, startPolling, stopPolling, forceUpdate } = useJobPolling(
+  // Initialize job polling
+  const { pollingState, startPolling, stopPolling, pausePolling, resumePolling, forceUpdate } = useJobPolling(
     handleJobUpdate,
     {
       baseInterval: 5000,
-      backgroundOptimization: true,
-      useLightweightPolling: true,
+      persistKey: 'dashboard_polling_paused',
     }
   );
 
-  // Start polling on mount
+  // Initialize polling and load initial data
   useEffect(() => {
+    // Load recent agents from localStorage
+    setRecentAgents(getRecentAgents());
+    
+    // Always fetch initial data
+    forceUpdate();
+    // Start polling (will respect persisted pause state)
     startPolling();
+    
     return () => stopPolling();
-  }, [startPolling, stopPolling]);
+  }, [startPolling, stopPolling, forceUpdate]);
 
-  // Handle polling errors
+  // Handle URL parameters and polling errors
   useEffect(() => {
+    // Handle URL parameters for agent selection
+    const agentParam = searchParams.get('agent');
+    if (agentParam) {
+      setSelectedAgentId(agentParam);
+      setShowAgentDirectory(false);
+      setIsJobModalOpen(true);
+      // Clear the URL parameter after handling it
+      setSearchParams(params => {
+        params.delete('agent');
+        return params;
+      });
+    }
+
+    // Handle polling errors
     if (pollingState.error) {
       setError(pollingState.error);
     }
-  }, [pollingState.error]);
+  }, [searchParams, setSearchParams, pollingState.error]);
 
   const handleJobCreated = (jobId: string) => {
+    // Add to recent agents
+    if (selectedAgentId) {
+      addRecentAgent(selectedAgentId);
+      setRecentAgents(getRecentAgents());
+    }
+    
     setIsJobModalOpen(false);
-    toast.success('Job created successfully!', {
-      action: {
-        label: 'View Details',
-        onClick: () => window.location.href = `/job/${jobId}`
-      }
-    });
-    forceUpdate(); // Force immediate update after job creation
+    setSelectedAgentId('');
+    setShowAgentDirectory(false);
+    toast.success(`Job ${jobId} created successfully!`);
+    forceUpdate(); // Refresh the job list
   };
 
   const handleRefresh = async () => {
+    setLoading(true);
+    setError('');
     await forceUpdate();
-    toast.info('Dashboard refreshed');
+    setLoading(false);
+  };
+
+  const handleTogglePolling = () => {
+    if (pollingState.isPaused) {
+      // Resume polling
+      resumePolling();
+      toast.info('Auto-refresh resumed');
+    } else {
+      // Pause polling
+      pausePolling();
+      toast.info('Auto-refresh paused');
+    }
   };
 
   const handleCreateJob = () => {
+    setSelectedAgentId('');
+    setShowAgentDirectory(false);
     setIsJobModalOpen(true);
+  };
+
+  const handleQuickAgentSelected = (agentId: string) => {
+    setSelectedAgentId(agentId);
+    setShowAgentDirectory(false);
+  };
+
+  const handleBrowseAllAgents = () => {
+    navigate('/agent-directory');
+  };
+
+  const handleAgentDirectorySelected = (agent: AgentInfo) => {
+    setSelectedAgentId(agent.identifier);
+    setShowAgentDirectory(false);
+  };
+
+  const handleBackToAgentSelection = () => {
+    setSelectedAgentId('');
+    setShowAgentDirectory(false);
   };
 
   const StatCard: React.FC<{ 
@@ -118,7 +201,7 @@ export const DashboardPage: React.FC = () => {
           {/* Mobile menu and title */}
           <div className="flex items-center gap-3">
             <div>
-              <h1 className="text-xl font-bold sm:text-2xl">AI Agent Template</h1>
+              <h1 className="text-xl font-bold sm:text-2xl">AI Agent Platform</h1>
               <p className="text-xs text-muted-foreground sm:text-sm">
                 Job Management Dashboard
               </p>
@@ -127,6 +210,20 @@ export const DashboardPage: React.FC = () => {
           
           {/* Mobile actions */}
           <div className="flex items-center gap-2 sm:gap-4">
+            {/* Agent Directory button */}
+            <Button 
+              variant="outline"
+              size="sm" 
+              className={cn(
+                "flex items-center gap-2 touch-manipulation",
+                touchButtonSizes.sm
+              )} 
+              onClick={() => navigate('/agent-directory')}
+            >
+              <Search className="h-4 w-4" />
+              <span className="hidden sm:inline">Agents</span>
+            </Button>
+            
             {/* Create job button */}
             <Button 
               size="sm" 
@@ -140,6 +237,9 @@ export const DashboardPage: React.FC = () => {
               <span className="hidden sm:inline">New Job</span>
               <span className="sm:hidden">New</span>
             </Button>
+            
+            {/* Theme switcher */}
+            <ThemeSwitcher />
             
             {/* User menu */}
             <div className="flex items-center gap-2 px-2 py-1 rounded-lg border sm:px-3 sm:py-2">
@@ -159,22 +259,40 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
         
-        {/* Connection status - Mobile friendly */}
+        {/* Connection status with pause/start control */}
         <div className="mt-3 flex items-center justify-between sm:mt-4">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             {pollingState.error ? (
               <WifiOff className="h-3 w-3 text-red-500" />
+            ) : pollingState.isPaused ? (
+              <Pause className="h-3 w-3 text-orange-500" />
             ) : (
               <Wifi className="h-3 w-3 text-green-500" />
             )}
             <span className="truncate">
               {pollingState.error ? 'Connection Issues' : 
+               pollingState.isPaused ? 'Auto-refresh paused' :
                pollingState.lastUpdate ? `Updated: ${pollingState.lastUpdate.toLocaleTimeString()}` :
                'Connecting...'}
             </span>
-            {pollingState.isPolling && (
+            {pollingState.isPolling && !pollingState.isPaused && (
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
             )}
+            
+            {/* Pause/Start button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleTogglePolling}
+              className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+              title={pollingState.isPaused ? "Start auto-refresh" : "Pause auto-refresh"}
+            >
+              {pollingState.isPaused ? (
+                <Play className="h-3 w-3" />
+              ) : (
+                <Pause className="h-3 w-3" />
+              )}
+            </Button>
           </div>
           
           {/* Stats summary on mobile */}
@@ -280,23 +398,18 @@ export const DashboardPage: React.FC = () => {
       </main>
 
       {/* Job Modal - Mobile optimized */}
-      <Dialog open={isJobModalOpen} onOpenChange={setIsJobModalOpen}>
-        <DialogContent className={cn(
-          "w-full max-w-[calc(100vw-1rem)] max-h-[calc(100vh-2rem)]",
-          "sm:max-w-[600px] sm:max-h-[80vh]",
-          "overflow-y-auto"
-        )}>
-          <DialogHeader className={responsivePadding.card}>
-            <DialogTitle className="text-lg sm:text-xl">Create New Job</DialogTitle>
-            <DialogDescription className="text-sm sm:text-base">
-              Configure and submit a new AI agent job.
-            </DialogDescription>
-          </DialogHeader>
-          <div className={responsivePadding.card}>
-            <JobForm onJobCreated={handleJobCreated} />
-          </div>
-        </DialogContent>
-      </Dialog>
+      <JobCreationModal
+        isOpen={isJobModalOpen}
+        onOpenChange={setIsJobModalOpen}
+        selectedAgentId={selectedAgentId}
+        showAgentDirectory={showAgentDirectory}
+        recentAgents={recentAgents}
+        onJobCreated={handleJobCreated}
+        onQuickAgentSelected={handleQuickAgentSelected}
+        onBrowseAllAgents={handleBrowseAllAgents}
+        onAgentDirectorySelected={handleAgentDirectorySelected}
+        onBackToAgentSelection={handleBackToAgentSelection}
+      />
     </div>
   );
 };

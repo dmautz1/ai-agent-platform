@@ -253,8 +253,8 @@ app.add_middleware(
 curl http://localhost:8000/agents
 
 # Verify endpoint URL format
-# Correct: http://localhost:8000/text-processing/analyze
-# Wrong:   http://localhost:8000/api/text-processing/analyze
+# Correct: http://localhost:8000/simple-prompt/process
+# Wrong:   http://localhost:8000/api/simple-prompt/process
 
 # Check agent file naming
 # Should end with _agent.py
@@ -271,10 +271,10 @@ curl http://localhost:8000/agents
 open http://localhost:8000/docs
 
 # Test with curl
-curl -X POST http://localhost:8000/text-processing/analyze \
+curl -X POST http://localhost:8000/simple-prompt/process \
      -H "Content-Type: application/json" \
      -H "Authorization: Bearer $TOKEN" \
-     -d '{"text": "test"}'
+     -d '{"prompt": "test", "max_tokens": 100}'
 
 # Enable debug logging
 DEBUG=true python main.py
@@ -296,7 +296,7 @@ curl -H "Authorization: Bearer $GOOGLE_API_KEY" \
 # Visit Google AI Studio → API usage
 
 # Test connection endpoint
-curl http://localhost:8000/adk/connection-test
+curl http://localhost:8000/google-ai/connection-test
 ```
 
 ### 2. Model Access Issues
@@ -305,13 +305,22 @@ curl http://localhost:8000/adk/connection-test
 
 **Solutions**:
 ```python
-# List available models
+# List available models using Google AI
+from config.google_ai import get_google_ai_config, create_model
 import google.generativeai as genai
-genai.configure(api_key="your-key")
 
-for model in genai.list_models():
-    print(f"Model: {model.name}")
-    print(f"Methods: {model.supported_generation_methods}")
+config = get_google_ai_config()
+# Check available models through Google AI configuration
+print(f"Default model: {config['default_model']}")
+
+# Test model access through Google AI
+try:
+    model = create_model("gemini-2.0-flash")
+    response = model.generate_content("Test prompt")
+    print("Model access successful")
+    print(f"Response: {response.text}")
+except Exception as e:
+    print(f"Model access failed: {e}")
 ```
 
 ### 3. Content Safety Blocks
@@ -464,63 +473,3 @@ npm run build -- --analyze
 # Try different browsers
 # Check for browser extensions blocking requests
 ```
-
-### 2. Production Deployment Issues
-
-**Problem**: Works locally but fails in production
-
-**Solutions**:
-```bash
-# Check environment variables in production
-# Verify all required secrets are set
-
-# Check production URLs
-# Ensure HTTPS in production
-
-# Monitor production logs
-# Check for rate limiting or quota issues
-```
-
-## Getting Further Help
-
-### Debugging Tools
-
-1. **Browser DevTools** - Network tab for API requests
-2. **React DevTools** - Component state and props
-3. **Supabase Dashboard** - Database logs and monitoring
-4. **Backend Logs** - Detailed error information
-
-### Log Locations
-
-```bash
-# Backend logs
-tail -f backend/logs/app.log
-
-# Frontend console
-# Open browser DevTools → Console
-
-# Supabase logs
-# Dashboard → Logs → API/Database
-```
-
-### Community Support
-
-- **GitHub Issues** - Report bugs and get help
-- **Documentation** - Check other docs sections
-- **API Docs** - Interactive documentation at `/docs`
-
-### Before Reporting Issues
-
-1. Check this troubleshooting guide
-2. Search existing GitHub issues
-3. Provide error messages and logs
-4. Include system information and versions
-5. List steps to reproduce the problem
-
----
-
-**Still having issues?** Check the specific integration guides:
-- **[Environment Setup](environment-setup.md)** - Detailed setup instructions
-- **[Supabase Integration](../integrations/supabase.md)** - Database issues
-- **[Google AI Integration](../integrations/google-ai.md)** - AI service problems
-- **[Authentication](../integrations/authentication.md)** - User management issues 

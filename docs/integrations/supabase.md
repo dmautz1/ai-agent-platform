@@ -4,7 +4,7 @@
 
 ## Overview
 
-The AI Agent Template uses [Supabase](https://supabase.com) as its primary database, providing:
+The AI Agent Platform uses [Supabase](https://supabase.com) as its primary database, providing:
 
 - **PostgreSQL Database** - Robust relational database
 - **Real-time Subscriptions** - Live data updates
@@ -19,7 +19,7 @@ The AI Agent Template uses [Supabase](https://supabase.com) as its primary datab
 1. Go to [supabase.com](https://supabase.com) and sign up
 2. Click **"New Project"**
 3. Choose organization and enter project details:
-   - **Name**: `ai-agent-template`
+   - **Name**: `ai-agent-platform`
    - **Database Password**: Generate strong password
    - **Region**: Choose closest to your users
 4. Wait 2-3 minutes for project creation
@@ -122,7 +122,7 @@ print('Database connection successful!')
 CREATE TABLE jobs (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-    agent_type TEXT NOT NULL,
+    agent_identifier TEXT NOT NULL,
     status job_status NOT NULL DEFAULT 'pending',
     job_data JSONB,
     result JSONB,
@@ -149,7 +149,7 @@ CREATE TYPE job_status AS ENUM (
 |--------|------|-------------|
 | `id` | UUID | Primary key, auto-generated |
 | `user_id` | UUID | References auth.users, user who created the job |
-| `agent_type` | TEXT | Type of agent processing the job |
+| `agent_identifier` | TEXT | Identifier of agent processing the job |
 | `status` | job_status | Job status: 'pending', 'running', 'completed', 'failed', 'cancelled' |
 | `job_data` | JSONB | Input data and parameters for the job |
 | `result` | JSONB | Job execution result or output |
@@ -181,7 +181,7 @@ auth.users (
 CREATE INDEX idx_jobs_user_id ON jobs(user_id);
 CREATE INDEX idx_jobs_status ON jobs(status);
 CREATE INDEX idx_jobs_created_at ON jobs(created_at DESC);
-CREATE INDEX idx_jobs_agent_type ON jobs(agent_type);
+CREATE INDEX idx_jobs_agent_identifier ON jobs(agent_identifier);
 CREATE INDEX idx_jobs_updated_at ON jobs(updated_at DESC);
 
 -- Composite indexes for common queries
@@ -275,11 +275,11 @@ supabase = get_supabase_client()
 
 #### Creating Jobs
 ```python
-async def create_job(user_id: str, agent_type: str, job_data: dict) -> dict:
+async def create_job(user_id: str, agent_identifier: str, job_data: dict) -> dict:
     """Create a new job in the database"""
     result = supabase.table("jobs").insert({
         "user_id": user_id,
-        "agent_type": agent_type,
+        "agent_identifier": agent_identifier,
         "status": "pending",
         "job_data": job_data,
         "created_at": "NOW()"
@@ -541,7 +541,7 @@ SELECT * FROM jobs ORDER BY created_at DESC LIMIT 10;
 SELECT * FROM job_stats;
 
 -- Find long-running jobs
-SELECT id, agent_type, started_at, 
+SELECT id, agent_identifier, started_at, 
        NOW() - started_at as duration
 FROM jobs 
 WHERE status = 'running' 

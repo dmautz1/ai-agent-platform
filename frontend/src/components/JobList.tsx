@@ -1,15 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, handleApiError, type Job } from '@/lib/api';
-import { useBreakpoint, responsiveTable, responsivePadding, touchButtonSizes } from '@/lib/responsive';
+import { api, type Job, handleApiError } from '@/lib/api';
+import { useBreakpoint, responsivePadding, responsiveTable, touchButtonSizes } from '@/lib/responsive';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Clock, CheckCircle, XCircle, PlayCircle, ChevronRight } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, PlayCircle, ChevronRight, RotateCcw, RefreshCw } from 'lucide-react';
 import { TableLoading, RefreshLoading } from '@/components/ui/loading';
 import { ErrorCard } from '@/components/ui/error';
 import { EmptyJobs } from '@/components/ui/empty-state';
+import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 
 interface JobListProps {
@@ -42,8 +43,10 @@ export const JobList: React.FC<JobListProps> = ({
   const [internalLoading, setInternalLoading] = useState(true);
   const [internalError, setInternalError] = useState<string>('');
   const [internalRefreshing, setInternalRefreshing] = useState(false);
+  const [rerunningJobs, setRerunningJobs] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
   const { isMobile } = useBreakpoint();
+  const toast = useToast();
 
   // Use external data if provided, otherwise fall back to internal management
   const jobs = externalJobs ?? internalJobs;
@@ -51,14 +54,13 @@ export const JobList: React.FC<JobListProps> = ({
   const error = externalError ?? internalError;
   const refreshing = externalRefreshing ?? internalRefreshing;
 
-  const fetchJobs = async (isRefresh = false) => {
+  const fetchJobs = useCallback(async (isRefresh = false) => {
     // If external data management is provided, use the external refresh function
     if (externalJobs && onRefresh) {
       await onRefresh();
       return;
     }
 
-    // Fall back to internal data management
     try {
       if (isRefresh) {
         setInternalRefreshing(true);
@@ -69,11 +71,64 @@ export const JobList: React.FC<JobListProps> = ({
 
       const jobsData = await api.jobs.getAll();
       setInternalJobs(jobsData);
-    } catch (err: any) {
-      setInternalError(handleApiError(err));
+      
+      if (isRefresh) {
+        toast.success(`Refreshed ${jobsData.length} jobs`);
+      }
+
+    } catch (err: unknown) {
+      const errorMessage = handleApiError(err);
+      setInternalError(errorMessage);
+      
+      if (!isRefresh) {
+        toast.error('Failed to load jobs');
+      } else {
+        toast.error('Failed to refresh jobs');
+      }
     } finally {
       setInternalLoading(false);
       setInternalRefreshing(false);
+    }
+  }, [externalJobs, onRefresh, toast]);
+
+  const handleRerunJob = async (job: Job, event: React.MouseEvent) => {
+    event.stopPropagation();
+    
+    setRerunningJobs(prev => new Set(prev).add(job.id));
+    
+    try {
+      const result = await api.jobs.rerun(job.id);
+      
+      toast.success(
+        `Job rerun successful! New job created.`,
+        {
+          title: `Original: ${job.id.slice(0, 8)}... → New: ${result.new_job_id.slice(0, 8)}...`,
+          action: {
+            label: 'View New Job',
+            onClick: () => navigate(`/job/${result.new_job_id}`)
+          }
+        }
+      );
+      
+      // Refresh job list to show the new job
+      await fetchJobs(true);
+      
+      // Navigate to the new job after a short delay
+      setTimeout(() => {
+        navigate(`/job/${result.new_job_id}`);
+      }, 1000);
+      
+    } catch (err: unknown) {
+      const errorMessage = handleApiError(err);
+      toast.error('Failed to rerun job', {
+        title: errorMessage
+      });
+    } finally {
+      setRerunningJobs(prev => {
+        const next = new Set(prev);
+        next.delete(job.id);
+        return next;
+      });
     }
   };
 
@@ -89,7 +144,7 @@ export const JobList: React.FC<JobListProps> = ({
     }, refreshInterval);
 
     return () => clearInterval(interval);
-  }, [refreshInterval, externalJobs]);
+  }, [refreshInterval, externalJobs, fetchJobs]);
 
   const getStatusBadge = (status: Job['status']) => {
     switch (status) {
@@ -134,64 +189,96 @@ export const JobList: React.FC<JobListProps> = ({
     return date.toLocaleString();
   };
 
-  const getAgentTypeFromJob = (job: Job): string => {
-    return job.data?.agent_type || 'unknown';
+  const getAgentIdentifierFromJob = (job: Job): string => {
+    return job.data?.agent_identifier || 'unknown';
   };
 
   const getTitleFromJob = (job: Job): string => {
     return job.data?.title || `Job ${job.id.slice(0, 8)}`;
   };
 
-  const getAgentTypeBadge = (agentType: string) => {
-    const colors = {
-      'text_processing': 'bg-purple-500 hover:bg-purple-600',
-      'summarization': 'bg-orange-500 hover:bg-orange-600',
-      'web_scraping': 'bg-teal-500 hover:bg-teal-600',
-    };
-    
-    const colorClass = colors[agentType as keyof typeof colors] || 'bg-gray-500 hover:bg-gray-600';
+  const getAgentIdentifierDisplay = (agentIdentifier: string) => {
+    if (!agentIdentifier || agentIdentifier === 'unknown') {
+      return (
+        <span className="text-xs text-muted-foreground font-mono">
+          UNKNOWN
+        </span>
+      );
+    }
     
     return (
-      <Badge variant="default" className={`${colorClass} text-white text-xs`}>
-        {agentType.replace('_', ' ').toUpperCase()}
-      </Badge>
+      <span className="text-xs font-mono text-muted-foreground">
+        {agentIdentifier.replace(/_/g, ' ').toUpperCase()}
+      </span>
     );
   };
 
   // Mobile card component for each job
-  const MobileJobCard: React.FC<{ job: Job }> = ({ job }) => (
-    <Card 
-      className="touch-manipulation cursor-pointer transition-colors hover:bg-muted/50 active:bg-muted" 
-      onClick={() => navigate(`/job/${job.id}`)}
-    >
-      <CardContent className={cn(responsivePadding.card, "space-y-3")}>
-        {/* Header */}
-        <div className="flex items-start justify-between">
-          <div className="flex-1 min-w-0">
-            <h3 className="font-medium text-sm leading-tight truncate">
-              {getTitleFromJob(job)}
-            </h3>
-            <p className="text-xs text-muted-foreground font-mono mt-1">
-              ID: {job.id.slice(0, 8)}...
-            </p>
+  const MobileJobCard: React.FC<{ job: Job }> = ({ job }) => {
+    const isRerunning = rerunningJobs.has(job.id);
+    
+    return (
+      <Card 
+        className="touch-manipulation cursor-pointer transition-colors hover:bg-muted/50 active:bg-muted" 
+        onClick={() => navigate(`/job/${job.id}`)}
+      >
+        <CardContent className={cn(responsivePadding.card, "space-y-3")}>
+          {/* Header */}
+          <div className="flex items-start justify-between">
+            <div className="flex-1 min-w-0">
+              <h3 className="font-medium text-sm leading-tight truncate">
+                {getTitleFromJob(job)}
+              </h3>
+              <p className="text-xs text-muted-foreground font-mono mt-1">
+                ID: {job.id.slice(0, 8)}...
+              </p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground ml-2 flex-shrink-0" />
           </div>
-          <ChevronRight className="h-4 w-4 text-muted-foreground ml-2 flex-shrink-0" />
-        </div>
-        
-        {/* Badges */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {getAgentTypeBadge(getAgentTypeFromJob(job))}
-          {getStatusBadge(job.status)}
-        </div>
-        
-        {/* Dates */}
-        <div className="space-y-1 text-xs text-muted-foreground">
-          <div>Created: {formatDate(job.created_at, true)}</div>
-          <div>Updated: {formatDate(job.updated_at, true)}</div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+          
+          {/* Badges */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {getAgentIdentifierDisplay(getAgentIdentifierFromJob(job))}
+            {getStatusBadge(job.status)}
+          </div>
+          
+          {/* Dates */}
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <div>Created: {formatDate(job.created_at, true)}</div>
+            <div>Updated: {formatDate(job.updated_at, true)}</div>
+          </div>
+          
+          {/* Actions */}
+          <div className="flex gap-2 pt-2 border-t border-border">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/job/${job.id}`);
+              }}
+              className={cn(touchButtonSizes.sm, "flex-1")}
+            >
+              View Details
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => handleRerunJob(job, e)}
+              disabled={isRerunning}
+              className={cn(touchButtonSizes.sm, "flex-shrink-0")}
+            >
+              {isRerunning ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <RotateCcw className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
 
   if (loading) {
     return (
@@ -271,7 +358,7 @@ export const JobList: React.FC<JobListProps> = ({
                 <TableRow>
                   <TableHead className={responsiveTable.header}>ID</TableHead>
                   <TableHead className={responsiveTable.header}>Title</TableHead>
-                  <TableHead className={responsiveTable.header}>Agent Type</TableHead>
+                  <TableHead className={responsiveTable.header}>Agent Identifier</TableHead>
                   <TableHead className={responsiveTable.header}>Status</TableHead>
                   <TableHead className={responsiveTable.header}>Created</TableHead>
                   <TableHead className={responsiveTable.header}>Updated</TableHead>
@@ -279,41 +366,61 @@ export const JobList: React.FC<JobListProps> = ({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {jobs.map((job) => (
-                  <TableRow key={job.id} className="hover:bg-muted/50 cursor-pointer" onClick={() => navigate(`/job/${job.id}`)}>
-                    <TableCell className={cn(responsiveTable.cell, "font-mono text-xs")}>
-                      {job.id.slice(0, 8)}...
-                    </TableCell>
-                    <TableCell className={cn(responsiveTable.cell, "font-medium")}>
-                      {getTitleFromJob(job)}
-                    </TableCell>
-                    <TableCell className={responsiveTable.cell}>
-                      {getAgentTypeBadge(getAgentTypeFromJob(job))}
-                    </TableCell>
-                    <TableCell className={responsiveTable.cell}>
-                      {getStatusBadge(job.status)}
-                    </TableCell>
-                    <TableCell className={cn(responsiveTable.cell, "text-muted-foreground")}>
-                      {formatDate(job.created_at)}
-                    </TableCell>
-                    <TableCell className={cn(responsiveTable.cell, "text-muted-foreground")}>
-                      {formatDate(job.updated_at)}
-                    </TableCell>
-                    <TableCell className={cn(responsiveTable.cell, "text-right")}>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/job/${job.id}`);
-                        }}
-                        className={touchButtonSizes.sm}
-                      >
-                        View Details
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {jobs.map((job) => {
+                  const isRerunning = rerunningJobs.has(job.id);
+                  
+                  return (
+                    <TableRow key={job.id} className="hover:bg-muted/50 cursor-pointer" onClick={() => navigate(`/job/${job.id}`)}>
+                      <TableCell className={cn(responsiveTable.cell, "font-mono text-xs")}>
+                        {job.id.slice(0, 8)}...
+                      </TableCell>
+                      <TableCell className={cn(responsiveTable.cell, "font-medium")}>
+                        {getTitleFromJob(job)}
+                      </TableCell>
+                      <TableCell className={responsiveTable.cell}>
+                        {getAgentIdentifierDisplay(getAgentIdentifierFromJob(job))}
+                      </TableCell>
+                      <TableCell className={responsiveTable.cell}>
+                        {getStatusBadge(job.status)}
+                      </TableCell>
+                      <TableCell className={cn(responsiveTable.cell, "text-muted-foreground")}>
+                        {formatDate(job.created_at)}
+                      </TableCell>
+                      <TableCell className={cn(responsiveTable.cell, "text-muted-foreground")}>
+                        {formatDate(job.updated_at)}
+                      </TableCell>
+                      <TableCell className={cn(responsiveTable.cell, "text-right")}>
+                        <div className="flex gap-2 justify-end">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/job/${job.id}`);
+                            }}
+                            className={touchButtonSizes.sm}
+                          >
+                            View Details
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => handleRerunJob(job, e)}
+                            disabled={isRerunning}
+                            className={cn(touchButtonSizes.sm, "flex-shrink-0")}
+                            title="Rerun this job with the same configuration"
+                          >
+                            {isRerunning ? (
+                              <RefreshCw className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <RotateCcw className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

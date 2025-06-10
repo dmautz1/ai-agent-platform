@@ -4,7 +4,7 @@
 
 ## Overview
 
-The AI Agent Template uses **Supabase Authentication** for comprehensive user management:
+The AI Agent Platform uses **Supabase Authentication** for comprehensive user management:
 
 - **Multiple Authentication Methods** - Email/password, OAuth providers
 - **JWT Token Security** - Secure API access with JSON Web Tokens

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { type Job } from '@/lib/api';
+import { api, type Job, handleApiError } from '@/lib/api';
 import { useSingleJobPolling } from '@/lib/polling';
 import { useBreakpoint, responsivePadding, responsiveSpacing, touchButtonSizes } from '@/lib/responsive';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ResultDisplay } from '@/components/ResultDisplay';
+import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import { 
   ArrowLeft, 
   Clock, 
@@ -22,9 +24,13 @@ import {
   FileText,
   AlertCircle,
   Wifi,
-  WifiOff
+  WifiOff,
+  Pause,
+  Play,
+  RotateCcw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/components/ui/toast';
 
 export const JobDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -33,6 +39,8 @@ export const JobDetails: React.FC = () => {
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const [isRerunning, setIsRerunning] = useState(false);
+  const toast = useToast();
 
   // Handle job updates from polling
   const handleJobUpdate = useCallback((updatedJob: Job) => {
@@ -42,12 +50,11 @@ export const JobDetails: React.FC = () => {
   }, []);
 
   // Initialize single job polling
-  const { pollingState, startPolling, stopPolling, forceUpdate } = useSingleJobPolling(
+  const { pollingState, startPolling, stopPolling, pausePolling, resumePolling, forceUpdate } = useSingleJobPolling(
     id || '',
     handleJobUpdate,
     {
-      baseInterval: 3000,
-      backgroundOptimization: true,
+      baseInterval: 3000
     }
   );
 
@@ -68,6 +75,52 @@ export const JobDetails: React.FC = () => {
 
   const handleRefresh = async () => {
     await forceUpdate();
+  };
+
+  const handleTogglePolling = () => {
+    if (pollingState.isPaused) {
+      // Resume polling
+      resumePolling();
+      toast.info('Auto-refresh resumed');
+    } else {
+      // Pause polling
+      pausePolling();
+      toast.info('Auto-refresh paused');
+    }
+  };
+
+  const handleRerunJob = async () => {
+    if (!job) return;
+    
+    setIsRerunning(true);
+    
+    try {
+      const result = await api.jobs.rerun(job.id);
+      
+      toast.success(
+        `Job rerun successful! New job created.`,
+        {
+          title: `Original: ${job.id.slice(0, 8)}... → New: ${result.new_job_id.slice(0, 8)}...`,
+          action: {
+            label: 'View New Job',
+            onClick: () => navigate(`/job/${result.new_job_id}`)
+          }
+        }
+      );
+      
+      // Navigate to the new job after a short delay
+      setTimeout(() => {
+        navigate(`/job/${result.new_job_id}`);
+      }, 1000);
+      
+    } catch (err: unknown) {
+      const errorMessage = handleApiError(err);
+      toast.error('Failed to rerun job', {
+        title: errorMessage
+      });
+    } finally {
+      setIsRerunning(false);
+    }
   };
 
   const getStatusBadge = (status: Job['status']) => {
@@ -105,19 +158,19 @@ export const JobDetails: React.FC = () => {
     }
   };
 
-  const getAgentTypeBadge = (agentType: string) => {
-    const colors = {
-      'text_processing': 'bg-purple-500 hover:bg-purple-600',
-      'summarization': 'bg-orange-500 hover:bg-orange-600',
-      'web_scraping': 'bg-teal-500 hover:bg-teal-600',
-    };
-    
-    const colorClass = colors[agentType as keyof typeof colors] || 'bg-gray-500 hover:bg-gray-600';
+  const getAgentIdentifierDisplay = (agentIdentifier: string) => {
+    if (!agentIdentifier || agentIdentifier === 'unknown') {
+      return (
+        <span className="text-sm text-muted-foreground font-mono">
+          UNKNOWN
+        </span>
+      );
+    }
     
     return (
-      <Badge variant="default" className={`${colorClass} text-white`}>
-        {agentType.replace('_', ' ').toUpperCase()}
-      </Badge>
+      <span className="text-sm font-mono text-muted-foreground">
+        {agentIdentifier.replace(/_/g, ' ').toUpperCase()}
+      </span>
     );
   };
 
@@ -134,14 +187,16 @@ export const JobDetails: React.FC = () => {
     }
   };
 
-  const formatJobResult = (result: any): string => {
+  const formatJobResult = (result: unknown): string => {
+    // Result from backend is already a JSON string
     if (typeof result === 'string') {
       return result;
     }
+    // Fallback for any legacy data that might be objects
     return JSON.stringify(result, null, 2);
   };
 
-  const downloadAsJson = (data: any, filename: string) => {
+  const downloadAsJson = (data: unknown, filename: string) => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -155,7 +210,7 @@ export const JobDetails: React.FC = () => {
 
   // Mobile header component
   const MobileHeader: React.FC<{ job: Job }> = ({ job }) => {
-    const agentType = job.data?.agent_type || 'unknown';
+    const agentIdentifier = job.data?.agent_identifier || 'unknown';
     const title = job.data?.title || `Job ${job.id.slice(0, 8)}`;
     const isActiveJob = job.status === 'pending' || job.status === 'running';
 
@@ -184,6 +239,21 @@ export const JobDetails: React.FC = () => {
             <Button
               variant="outline"
               size="sm"
+              onClick={handleRerunJob}
+              disabled={isRerunning}
+              className={cn(touchButtonSizes.sm, "flex-shrink-0")}
+              title="Rerun this job with the same configuration"
+            >
+              {isRerunning ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <RotateCcw className="h-4 w-4" />
+              )}
+            </Button>
+            
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleRefresh}
               disabled={pollingState.isPolling}
               className={cn(touchButtonSizes.sm, "flex-shrink-0")}
@@ -195,22 +265,39 @@ export const JobDetails: React.FC = () => {
           {/* Status and badges */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 flex-wrap">
-              {getAgentTypeBadge(agentType)}
+              {getAgentIdentifierDisplay(agentIdentifier)}
               {getStatusBadge(job.status)}
             </div>
             
-            {/* Connection status */}
+            {/* Connection status with pause/start control */}
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               {pollingState.error ? (
                 <WifiOff className="h-3 w-3 text-red-500" />
+              ) : pollingState.isPaused ? (
+                <Pause className="h-3 w-3 text-orange-500" />
               ) : isActiveJob ? (
                 <Wifi className="h-3 w-3 text-green-500" />
               ) : (
                 <Wifi className="h-3 w-3 text-gray-400" />
               )}
-              {pollingState.isPolling && (
+              {pollingState.isPolling && !pollingState.isPaused && (
                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
               )}
+              
+              {/* Pause/Start button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleTogglePolling}
+                className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground ml-1"
+                title={pollingState.isPaused ? "Start auto-refresh" : "Pause auto-refresh"}
+              >
+                {pollingState.isPaused ? (
+                  <Play className="h-3 w-3" />
+                ) : (
+                  <Pause className="h-3 w-3" />
+                )}
+              </Button>
             </div>
           </div>
         </div>
@@ -306,7 +393,7 @@ export const JobDetails: React.FC = () => {
     );
   }
 
-  const agentType = job.data?.agent_type || 'unknown';
+  const agentIdentifier = job.data?.agent_identifier || 'unknown';
   const title = job.data?.title || `Job ${job.id.slice(0, 8)}`;
   const isActiveJob = job.status === 'pending' || job.status === 'running';
 
@@ -324,41 +411,39 @@ export const JobDetails: React.FC = () => {
                 Back to Dashboard
               </Button>
               <div>
-                <h1 className="text-2xl font-bold text-foreground">{title}</h1>
-                <p className="text-sm text-muted-foreground">Job ID: {job.id}</p>
+                <h1 className="text-2xl font-bold">{title}</h1>
+                <p className="text-sm text-muted-foreground">
+                  ID: {job.id.slice(0, 8)}... | {getAgentIdentifierDisplay(agentIdentifier)}
+                </p>
               </div>
             </div>
             
-            <div className="flex items-center gap-3">
-              {getStatusBadge(job.status)}
-              
-              {/* Real-time status indicator */}
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                {pollingState.error ? (
-                  <WifiOff className="h-4 w-4 text-red-500" />
-                ) : isActiveJob ? (
-                  <Wifi className="h-4 w-4 text-green-500" />
-                ) : (
-                  <Wifi className="h-4 w-4 text-gray-400" />
-                )}
-                <span>
-                  {pollingState.error ? 'Connection Issues' : 
-                   isActiveJob && pollingState.lastUpdate ? `Updated: ${pollingState.lastUpdate.toLocaleTimeString()}` :
-                   isActiveJob ? 'Live updates' : 'No updates needed'}
-                </span>
-                {pollingState.isPolling && (
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                )}
-              </div>
+            <div className="flex items-center gap-2">
+              <ThemeSwitcher />
               
               <Button
                 variant="outline"
-                size="sm"
+                onClick={handleRerunJob}
+                disabled={isRerunning}
+                className={touchButtonSizes.default}
+                title="Rerun this job with the same configuration"
+              >
+                {isRerunning ? (
+                  <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                )}
+                Rerun Job
+              </Button>
+              
+              <Button
+                variant="outline"
                 onClick={handleRefresh}
                 disabled={pollingState.isPolling}
-                className={touchButtonSizes.sm}
+                className={touchButtonSizes.default}
               >
-                <RefreshCw className={cn("h-4 w-4", pollingState.isPolling && "animate-spin")} />
+                <RefreshCw className={cn("h-4 w-4 mr-2", pollingState.isPolling && "animate-spin")} />
+                Refresh
               </Button>
             </div>
           </div>
@@ -390,8 +475,8 @@ export const JobDetails: React.FC = () => {
             <CardContent className="space-y-4">
               <div className="space-y-3">
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                  <span className="text-sm font-medium text-muted-foreground">Agent Type:</span>
-                  {getAgentTypeBadge(agentType)}
+                  <span className="text-sm font-medium text-muted-foreground">Agent Identifier:</span>
+                  {getAgentIdentifierDisplay(agentIdentifier)}
                 </div>
                 
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
@@ -481,9 +566,12 @@ export const JobDetails: React.FC = () => {
                     <Copy className="h-3 w-3" />
                   </Button>
                 </div>
-                <pre className="text-sm bg-muted p-4 rounded-md overflow-x-auto max-h-96 whitespace-pre-wrap break-words">
-                  {formatJobResult(job.result)}
-                </pre>
+                
+                <ResultDisplay 
+                  result={formatJobResult(job.result)} 
+                  result_format={job.result_format}
+                />
+                
                 <Button
                   variant="outline"
                   size="sm"
@@ -514,9 +602,9 @@ export const JobDetails: React.FC = () => {
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  <pre className="whitespace-pre-wrap text-sm break-words">
-                    {job.error_message}
-                  </pre>
+                  <ResultDisplay 
+                    result={formatJobResult(job.error_message)} 
+                  />
                 </AlertDescription>
               </Alert>
             </CardContent>

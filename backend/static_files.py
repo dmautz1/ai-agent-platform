@@ -56,22 +56,18 @@ def is_api_route(path: str) -> bool:
     """
     api_prefixes = [
         "/api",
-        "/health",
         "/docs",
         "/redoc",
         "/openapi.json",
-        "/agents",
-        "/jobs",
-        "/pipeline",
-        "/config",
+        "/health",
         "/auth",
-        "/adk",
-        "/cors-info",
+        "/jobs",
+        "/agents",
+        "/google-ai",
+        "/config",
+        "/pipeline",
         "/logs",
-        # Agent-specific endpoints
-        "/text-processing",
-        "/summarization", 
-        "/web-scraping",
+        # Note: Agent-specific endpoints are dynamically registered
     ]
     
     return any(path.startswith(prefix) for prefix in api_prefixes)
@@ -220,7 +216,7 @@ def create_fallback_index() -> str:
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>AI Agent Template</title>
+        <title>AI Agent Platform</title>
         <style>
             body {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
@@ -270,7 +266,7 @@ def create_fallback_index() -> str:
     </head>
     <body>
         <div class="container">
-            <h1>🤖 AI Agent Template</h1>
+            <h1>🤖 AI Agent Platform</h1>
             <p>
                 The backend API is running successfully! 
                 The frontend application is not yet available at this location.

@@ -4,224 +4,197 @@ import { api, type Job } from './api';
 export interface PollingOptions {
   /** Base polling interval in milliseconds (default: 5000) */
   baseInterval?: number;
-  /** Whether to enable background tab optimization (default: true) */
-  backgroundOptimization?: boolean;
   /** Maximum retry attempts for failed requests (default: 3) */
   maxRetries?: number;
-  /** Multiplier for retry delays (default: 1.5) */
-  retryBackoffMultiplier?: number;
-  /** Whether to use lightweight polling when possible (default: true) */
-  useLightweightPolling?: boolean;
+  /** Key for localStorage persistence (optional) */
+  persistKey?: string;
 }
 
 export interface PollingState {
   isPolling: boolean;
   lastUpdate: Date | null;
-  retryCount: number;
   error: string | null;
+  isPaused: boolean;
+  retryCount: number;
 }
 
-/**
- * Smart polling intervals based on job status
- */
-const getPollingInterval = (
-  jobs: Pick<Job, 'status'>[], 
-  baseInterval: number, 
-  isBackgroundTab: boolean
-): number => {
-  const hasActiveJobs = jobs.some(job => job.status === 'running' || job.status === 'pending');
-  
-  if (isBackgroundTab) {
-    // Reduce polling frequency in background tabs
-    return hasActiveJobs ? baseInterval * 4 : baseInterval * 8;
+// Helper functions for localStorage persistence
+const getStoredPauseState = (key: string): boolean => {
+  try {
+    return JSON.parse(localStorage.getItem(key) || 'false');
+  } catch {
+    return false;
   }
-  
-  if (hasActiveJobs) {
-    // More frequent polling for active jobs
-    return baseInterval * 0.6; // 3 seconds if base is 5 seconds
-  }
-  
-  // Less frequent polling when all jobs are completed/failed
-  return baseInterval * 2;
+};
+
+const setStoredPauseState = (key: string, paused: boolean) => {
+  localStorage.setItem(key, JSON.stringify(paused));
 };
 
 /**
- * Hook for polling job status updates with smart optimizations
+ * Simple polling intervals based on job status
+ */
+const getPollingInterval = (jobs: Pick<Job, 'status'>[], baseInterval: number): number => {
+  const hasActiveJobs = jobs.some(job => job.status === 'running' || job.status === 'pending');
+  return hasActiveJobs ? baseInterval : baseInterval * 2;
+};
+
+/**
+ * Hook for polling job status updates
  */
 export const useJobPolling = (
   onUpdate: (jobs: Job[]) => void,
   options: PollingOptions = {}
 ) => {
-  const {
-    baseInterval = 5000,
-    backgroundOptimization = true,
-    maxRetries = 3,
-    retryBackoffMultiplier = 1.5,
-    useLightweightPolling = true,
-  } = options;
+  const { baseInterval = 5000, maxRetries = 3, persistKey } = options;
 
   const [pollingState, setPollingState] = useState<PollingState>({
     isPolling: false,
     lastUpdate: null,
-    retryCount: 0,
     error: null,
+    isPaused: persistKey ? getStoredPauseState(persistKey) : false,
+    retryCount: 0,
   });
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentJobsRef = useRef<Job[]>([]);
-  const isBackgroundTabRef = useRef(false);
+  const isPausedRef = useRef(pollingState.isPaused);
+  const retryCountRef = useRef(0);
 
-  // Track if tab is active/background
+  // Keep paused ref in sync and persist to localStorage
   useEffect(() => {
-    if (!backgroundOptimization) return;
+    isPausedRef.current = pollingState.isPaused;
+    if (persistKey) {
+      setStoredPauseState(persistKey, pollingState.isPaused);
+    }
+  }, [pollingState.isPaused, persistKey]);
 
-    const handleVisibilityChange = () => {
-      isBackgroundTabRef.current = document.hidden;
-    };
+  const fetchJobs = useCallback(async (): Promise<Job[]> => {
+    setPollingState(prev => ({ ...prev, isPolling: true, error: null }));
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [backgroundOptimization]);
-
-  const fetchJobs = useCallback(async (isRetry = false): Promise<Job[]> => {
     try {
-      setPollingState(prev => ({ 
-        ...prev, 
-        isPolling: true,
-        error: isRetry ? prev.error : null 
-      }));
-
-      let jobs: Job[];
-
-      if (useLightweightPolling && currentJobsRef.current.length > 0) {
-        // Use lightweight polling for status updates
-        const jobIds = currentJobsRef.current.map(job => job.id);
-        const statusUpdates = await api.jobs.getBatchStatus(jobIds);
-        
-        // Merge status updates with existing job data
-        jobs = currentJobsRef.current.map(job => {
-          const statusUpdate = statusUpdates[job.id];
-          return {
-            ...job,
-            status: (statusUpdate?.status as Job['status']) || job.status,
-            updated_at: statusUpdate?.updated_at || job.updated_at,
-          };
-        });
-
-        // If any jobs have status changes that require full data, fetch them
-        const needsFullFetch = jobs.some(job => {
-          const oldJob = currentJobsRef.current.find(j => j.id === job.id);
-          return oldJob && oldJob.status !== job.status && 
-                 (job.status === 'completed' || job.status === 'failed');
-        });
-
-        if (needsFullFetch) {
-          jobs = await api.jobs.getAll();
-        }
-      } else {
-        // Full fetch for initial load or when lightweight polling is disabled
-        jobs = await api.jobs.getAll();
-      }
-
+      const jobs = await api.jobs.getAll();
       currentJobsRef.current = jobs;
+      retryCountRef.current = 0;
       onUpdate(jobs);
 
       setPollingState(prev => ({
         ...prev,
         isPolling: false,
         lastUpdate: new Date(),
-        retryCount: 0,
         error: null,
+        retryCount: 0,
       }));
 
       return jobs;
-    } catch (error: any) {
-      const errorMessage = error?.message || 'Failed to fetch jobs';
-      
+    } catch (error: unknown) {
+      retryCountRef.current++;
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch jobs';
       setPollingState(prev => ({
         ...prev,
         isPolling: false,
-        retryCount: prev.retryCount + 1,
         error: errorMessage,
+        retryCount: retryCountRef.current,
       }));
-
       throw error;
     }
-  }, [onUpdate, useLightweightPolling]);
+  }, [onUpdate]);
 
-  const scheduleNextPoll = useCallback((jobs: Job[]) => {
-    const interval = getPollingInterval(jobs, baseInterval, isBackgroundTabRef.current);
+  const scheduleNextPoll = useCallback((jobs: Job[] = []) => {
+    if (isPausedRef.current) return;
+
+    const interval = getPollingInterval(jobs, baseInterval);
     
-    intervalRef.current = setTimeout(async () => {
+    timeoutRef.current = setTimeout(async () => {
+      if (isPausedRef.current) return;
+      
       try {
         const updatedJobs = await fetchJobs();
         scheduleNextPoll(updatedJobs);
-      } catch (error) {
-        // Handle retry logic
-        if (pollingState.retryCount < maxRetries) {
-          const retryDelay = baseInterval * Math.pow(retryBackoffMultiplier, pollingState.retryCount);
-          
-          retryTimeoutRef.current = setTimeout(async () => {
-            try {
-              const updatedJobs = await fetchJobs(true);
-              scheduleNextPoll(updatedJobs);
-            } catch (retryError) {
-              // If retry fails, schedule next poll with exponential backoff
+      } catch {
+        // Retry count already handled in fetchJobs
+        if (retryCountRef.current <= maxRetries) {
+          // Retry with exponential backoff
+          const retryDelay = baseInterval * Math.pow(2, retryCountRef.current - 1);
+          timeoutRef.current = setTimeout(() => {
+            if (!isPausedRef.current) {
               scheduleNextPoll(currentJobsRef.current);
             }
           }, retryDelay);
         } else {
-          // Max retries reached, continue polling with base interval
+          // Max retries reached, continue with regular interval
+          retryCountRef.current = 0;
+          setPollingState(prev => ({ ...prev, retryCount: 0 }));
           scheduleNextPoll(currentJobsRef.current);
         }
       }
     }, interval);
-  }, [baseInterval, fetchJobs, maxRetries, retryBackoffMultiplier, pollingState.retryCount]);
+  }, [baseInterval, fetchJobs, maxRetries]);
 
   const startPolling = useCallback(async () => {
-    if (intervalRef.current) return; // Already polling
+    if (timeoutRef.current) return;
+
+    // Only set isPaused to false if not persisted as paused
+    setPollingState(prev => ({ 
+      ...prev, 
+      isPaused: persistKey ? getStoredPauseState(persistKey) : false,
+      retryCount: 0,
+    }));
+    retryCountRef.current = 0;
+
+    // Don't start polling if paused
+    if (persistKey && getStoredPauseState(persistKey)) {
+      return;
+    }
 
     try {
       const jobs = await fetchJobs();
       scheduleNextPoll(jobs);
-    } catch (error) {
-      // Initial fetch failed, start polling anyway with empty array
+    } catch {
       scheduleNextPoll([]);
     }
-  }, [fetchJobs, scheduleNextPoll]);
+  }, [fetchJobs, scheduleNextPoll, persistKey]);
 
   const stopPolling = useCallback(() => {
-    if (intervalRef.current) {
-      clearTimeout(intervalRef.current);
-      intervalRef.current = null;
-    }
-    if (retryTimeoutRef.current) {
-      clearTimeout(retryTimeoutRef.current);
-      retryTimeoutRef.current = null;
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
     }
     setPollingState(prev => ({ ...prev, isPolling: false }));
   }, []);
 
+  const pausePolling = useCallback(() => {
+    setPollingState(prev => ({ ...prev, isPaused: true }));
+    stopPolling();
+  }, [stopPolling]);
+
+  const resumePolling = useCallback(async () => {
+    setPollingState(prev => ({ ...prev, isPaused: false }));
+    await startPolling();
+  }, [startPolling]);
+
   const forceUpdate = useCallback(async () => {
     try {
-      await fetchJobs();
-    } catch (error) {
-      // Error handling is done in fetchJobs
+      const jobs = await fetchJobs();
+      if (!isPausedRef.current && !timeoutRef.current) {
+        scheduleNextPoll(jobs);
+      }
+    } catch {
+      // Error handled in fetchJobs
     }
-  }, [fetchJobs]);
+  }, [fetchJobs, scheduleNextPoll]);
 
   // Cleanup on unmount
   useEffect(() => {
-    return () => {
-      stopPolling();
-    };
+    return () => stopPolling();
   }, [stopPolling]);
 
   return {
     pollingState,
     startPolling,
     stopPolling,
+    pausePolling,
+    resumePolling,
     forceUpdate,
   };
 };
@@ -234,138 +207,143 @@ export const useSingleJobPolling = (
   onUpdate: (job: Job) => void,
   options: PollingOptions = {}
 ) => {
-  const {
-    baseInterval = 3000,
-    backgroundOptimization = true,
-    maxRetries = 3,
-  } = options;
+  const { baseInterval = 3000, maxRetries = 3 } = options;
 
   const [pollingState, setPollingState] = useState<PollingState>({
     isPolling: false,
     lastUpdate: null,
-    retryCount: 0,
     error: null,
+    isPaused: false,
+    retryCount: 0,
   });
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentJobRef = useRef<Job | null>(null);
-  const isBackgroundTabRef = useRef(false);
+  const isPausedRef = useRef(false);
+  const retryCountRef = useRef(0);
 
-  // Track if tab is active/background
+  // Keep paused ref in sync
   useEffect(() => {
-    if (!backgroundOptimization) return;
-
-    const handleVisibilityChange = () => {
-      isBackgroundTabRef.current = document.hidden;
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [backgroundOptimization]);
+    isPausedRef.current = pollingState.isPaused;
+  }, [pollingState.isPaused]);
 
   const fetchJob = useCallback(async (): Promise<Job> => {
-    setPollingState(prev => ({ ...prev, isPolling: true }));
+    setPollingState(prev => ({ ...prev, isPolling: true, error: null }));
 
     try {
       const job = await api.jobs.getById(jobId);
       currentJobRef.current = job;
+      retryCountRef.current = 0;
       onUpdate(job);
 
       setPollingState(prev => ({
         ...prev,
         isPolling: false,
         lastUpdate: new Date(),
-        retryCount: 0,
         error: null,
+        retryCount: 0,
       }));
 
       return job;
-    } catch (error: any) {
-      const errorMessage = error?.message || 'Failed to fetch job';
-      
+    } catch (error: unknown) {
+      retryCountRef.current++;
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch job';
       setPollingState(prev => ({
         ...prev,
         isPolling: false,
-        retryCount: prev.retryCount + 1,
         error: errorMessage,
+        retryCount: retryCountRef.current,
       }));
-
       throw error;
     }
   }, [jobId, onUpdate]);
 
   const scheduleNextPoll = useCallback((job: Job | null) => {
-    // Only poll if job is active (pending or running)
-    if (!job || (job.status !== 'pending' && job.status !== 'running')) {
+    // Only poll active jobs and when not paused
+    if (!job || (job.status !== 'pending' && job.status !== 'running') || isPausedRef.current) {
       return;
     }
 
-    const interval = isBackgroundTabRef.current ? baseInterval * 3 : baseInterval;
-    
-    intervalRef.current = setTimeout(async () => {
+    timeoutRef.current = setTimeout(async () => {
+      if (isPausedRef.current) return;
+      
       try {
         const updatedJob = await fetchJob();
         scheduleNextPoll(updatedJob);
-      } catch (error) {
-        // Retry logic for single job polling
-        if (pollingState.retryCount < maxRetries) {
-          setTimeout(async () => {
-            try {
-              const updatedJob = await fetchJob();
-              scheduleNextPoll(updatedJob);
-            } catch (retryError) {
+      } catch {
+        setPollingState(prev => ({ ...prev, retryCount: retryCountRef.current }));
+        
+        if (retryCountRef.current <= maxRetries) {
+          const retryDelay = baseInterval * Math.pow(2, retryCountRef.current - 1);
+          timeoutRef.current = setTimeout(() => {
+            if (!isPausedRef.current) {
               scheduleNextPoll(currentJobRef.current);
             }
-          }, baseInterval * 2);
+          }, retryDelay);
         } else {
+          retryCountRef.current = 0;
+          setPollingState(prev => ({ ...prev, retryCount: 0 }));
           scheduleNextPoll(currentJobRef.current);
         }
       }
-    }, interval);
-  }, [baseInterval, fetchJob, maxRetries, pollingState.retryCount]);
+    }, baseInterval);
+  }, [baseInterval, fetchJob, maxRetries]);
 
   const startPolling = useCallback(async () => {
-    if (intervalRef.current) return;
+    if (timeoutRef.current) return;
+
+    setPollingState(prev => ({ ...prev, isPaused: false, retryCount: 0 }));
+    retryCountRef.current = 0;
 
     try {
       const job = await fetchJob();
       scheduleNextPoll(job);
-    } catch (error) {
-      // Initial fetch failed, but still schedule polling
+    } catch {
       scheduleNextPoll(null);
     }
   }, [fetchJob, scheduleNextPoll]);
 
   const stopPolling = useCallback(() => {
-    if (intervalRef.current) {
-      clearTimeout(intervalRef.current);
-      intervalRef.current = null;
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
     }
     setPollingState(prev => ({ ...prev, isPolling: false }));
   }, []);
 
+  const pausePolling = useCallback(() => {
+    setPollingState(prev => ({ ...prev, isPaused: true }));
+    stopPolling();
+  }, [stopPolling]);
+
+  const resumePolling = useCallback(async () => {
+    setPollingState(prev => ({ ...prev, isPaused: false }));
+    await startPolling();
+  }, [startPolling]);
+
   const forceUpdate = useCallback(async () => {
     try {
       const job = await fetchJob();
-      // Restart polling cycle
-      stopPolling();
-      scheduleNextPoll(job);
-    } catch (error) {
-      // Error handling is done in fetchJob
+      if (!isPausedRef.current) {
+        stopPolling();
+        scheduleNextPoll(job);
+      }
+    } catch {
+      // Error handled in fetchJob
     }
   }, [fetchJob, scheduleNextPoll, stopPolling]);
 
   // Cleanup on unmount
   useEffect(() => {
-    return () => {
-      stopPolling();
-    };
+    return () => stopPolling();
   }, [stopPolling]);
 
   return {
     pollingState,
     startPolling,
     stopPolling,
+    pausePolling,
+    resumePolling,
     forceUpdate,
   };
 }; 

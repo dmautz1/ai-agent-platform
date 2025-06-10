@@ -1,5 +1,5 @@
 """
-Comprehensive logging system for the AI Agent Template.
+Comprehensive logging system for the AI Agent Platform.
 
 This module provides:
 - Structured logging with multiple loggers
@@ -18,8 +18,10 @@ import os
 import sys
 import time
 import traceback
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 from functools import wraps
+from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from fastapi import FastAPI, Request, Response
@@ -46,7 +48,7 @@ class StructuredLogger:
     def _format_message(self, message: str, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Format log message with context and metadata"""
         log_data = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'message': message,
             'context': self.context.copy()
         }
@@ -388,23 +390,23 @@ class AgentLogger:
     def __init__(self, logger: StructuredLogger):
         self.logger = logger
     
-    def log_job_created(self, job_id: str, job_type: str, user_id: str, **context):
+    def log_job_created(self, job_id: str, agent_identifier: str, user_id: str, **context):
         """Log job creation"""
         self.logger.info(
             "Agent job created",
             job_id=job_id,
-            job_type=job_type,
+            agent_identifier=agent_identifier,
             user_id=user_id,
             event_type="job_created",
             **context
         )
     
-    def log_job_started(self, job_id: str, agent_type: str, **context):
+    def log_job_started(self, job_id: str, agent_identifier: str, **context):
         """Log job start"""
         self.logger.info(
             "Agent job started",
             job_id=job_id,
-            agent_type=agent_type,
+            agent_identifier=agent_identifier,
             event_type="job_started",
             **context
         )
@@ -430,11 +432,11 @@ class AgentLogger:
             **context
         )
     
-    def log_agent_error(self, agent_type: str, error: Exception, **context):
+    def log_agent_error(self, agent_identifier: str, error: Exception, **context):
         """Log agent-specific error"""
         self.logger.error(
             "Agent error",
-            agent_type=agent_type,
+            agent_identifier=agent_identifier,
             exception=error,
             event_type="agent_error",
             **context
