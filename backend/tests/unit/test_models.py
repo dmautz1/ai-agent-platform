@@ -1,28 +1,22 @@
 """
-Unit tests for Pydantic models.
+Unit tests for models.py - Generic Agent Framework
+
+Tests the new generic models that support any agent type without hardcoded enums.
 """
 
 import pytest
 from datetime import datetime
 from pydantic import ValidationError
-import sys
-import os
-
-# Add the backend directory to the Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-
 from models import (
-    JobStatus, JobType, AgentType,
-    BaseResponse, ErrorResponse, UserInfo,
-    JobDataBase, TextProcessingJobData, TextSummarizationJobData, 
-    WebScrapingJobData, CustomJobData,
+    JobStatus, BaseResponse, ErrorResponse, UserInfo, JobDataBase,
     JobCreateRequest, JobResponse, JobListResponse, JobCreateResponse,
     JobDetailResponse, JobStatusUpdate, JobStats, JobStatsResponse,
     AuthResponse, HealthResponse
 )
 
+
 class TestEnums:
-    """Test enumeration types"""
+    """Test enumeration values"""
 
     def test_job_status_enum(self):
         """Test JobStatus enumeration values"""
@@ -31,18 +25,6 @@ class TestEnums:
         assert JobStatus.completed == "completed"
         assert JobStatus.failed == "failed"
 
-    def test_job_type_enum(self):
-        """Test JobType enumeration values"""
-        assert JobType.text_processing == "text_processing"
-        assert JobType.text_summarization == "text_summarization"
-        assert JobType.web_scraping == "web_scraping"
-        assert JobType.custom == "custom"
-
-    def test_agent_type_enum(self):
-        """Test AgentType enumeration values"""
-        assert AgentType.google_adk == "google_adk"
-        assert AgentType.openai == "openai"
-        assert AgentType.custom == "custom"
 
 class TestBaseModels:
     """Test base model classes"""
@@ -77,6 +59,7 @@ class TestBaseModels:
         assert error.message == "Error occurred"
         assert error.error_code == "ERR001"
         assert error.details == {"field": "value"}
+
 
 class TestUserModels:
     """Test user-related models"""
@@ -115,94 +98,27 @@ class TestUserModels:
         assert user.metadata is None
         assert user.app_metadata is None
 
+
 class TestJobDataModels:
-    """Test job data models"""
+    """Test generic job data models"""
 
-    def test_text_processing_job_data_valid(self):
-        """Test TextProcessingJobData with valid data"""
-        job_data = TextProcessingJobData(
-            text="Sample text to process",
-            operation="analyze_sentiment",
-            parameters={"language": "en"}
+    def test_job_data_base_valid(self):
+        """Test JobDataBase with valid data"""
+        job_data = JobDataBase(
+            agent_identifier="simple_prompt"
         )
-        assert job_data.job_type == JobType.text_processing
-        assert job_data.agent_type == AgentType.google_adk
-        assert job_data.text == "Sample text to process"
-        assert job_data.operation == "analyze_sentiment"
-        assert job_data.parameters == {"language": "en"}
+        assert job_data.agent_identifier == "simple_prompt"
+        assert job_data.metadata is None
 
-    def test_text_processing_job_data_invalid_text_length(self):
-        """Test TextProcessingJobData with invalid text length"""
-        # Test empty text
-        with pytest.raises(ValidationError) as exc_info:
-            TextProcessingJobData(
-                text="",
-                operation="analyze"
-            )
-        assert "at least 1 characters" in str(exc_info.value)
-
-        # Test text too long (over 50000 characters)
-        long_text = "x" * 50001
-        with pytest.raises(ValidationError) as exc_info:
-            TextProcessingJobData(
-                text=long_text,
-                operation="analyze"
-            )
-        assert "at most 50000 characters" in str(exc_info.value)
-
-    def test_text_summarization_job_data_valid(self):
-        """Test TextSummarizationJobData with valid data"""
-        job_data = TextSummarizationJobData(
-            text="Long text to summarize",
-            max_length=200,
-            min_length=50,
-            style="neutral"
+    def test_job_data_base_with_metadata(self):
+        """Test JobDataBase with metadata"""
+        job_data = JobDataBase(
+            agent_identifier="simple_prompt",
+            metadata={"source": "test", "priority": 5}
         )
-        assert job_data.job_type == JobType.text_summarization
-        assert job_data.text == "Long text to summarize"
-        assert job_data.max_length == 200
-        assert job_data.min_length == 50
-        assert job_data.style == "neutral"
+        assert job_data.agent_identifier == "simple_prompt"
+        assert job_data.metadata == {"source": "test", "priority": 5}
 
-    def test_text_summarization_job_data_invalid_lengths(self):
-        """Test TextSummarizationJobData with invalid length constraints"""
-        with pytest.raises(ValidationError) as exc_info:
-            TextSummarizationJobData(
-                text="Text to summarize",
-                max_length=100,
-                min_length=150  # min_length > max_length
-            )
-        assert "min_length must be less than max_length" in str(exc_info.value)
-
-    def test_web_scraping_job_data_valid(self):
-        """Test WebScrapingJobData with valid data"""
-        job_data = WebScrapingJobData(
-            url="https://example.com",
-            selectors={"title": "h1", "content": ".main"},
-            options={"timeout": 30}
-        )
-        assert job_data.job_type == JobType.web_scraping
-        assert job_data.url == "https://example.com"
-        assert job_data.selectors == {"title": "h1", "content": ".main"}
-        assert job_data.options == {"timeout": 30}
-
-    def test_web_scraping_job_data_invalid_url(self):
-        """Test WebScrapingJobData with invalid URL"""
-        with pytest.raises(ValidationError) as exc_info:
-            WebScrapingJobData(url="invalid-url")
-        assert "URL must start with http:// or https://" in str(exc_info.value)
-
-        with pytest.raises(ValidationError) as exc_info:
-            WebScrapingJobData(url="ftp://example.com")
-        assert "URL must start with http:// or https://" in str(exc_info.value)
-
-    def test_custom_job_data_valid(self):
-        """Test CustomJobData with valid data"""
-        job_data = CustomJobData(
-            custom_data={"operation": "custom_task", "params": {"key": "value"}}
-        )
-        assert job_data.job_type == JobType.custom
-        assert job_data.custom_data == {"operation": "custom_task", "params": {"key": "value"}}
 
 class TestJobRequestResponseModels:
     """Test job request and response models"""
@@ -210,49 +126,64 @@ class TestJobRequestResponseModels:
     def test_job_create_request_valid(self):
         """Test JobCreateRequest with valid data"""
         request = JobCreateRequest(
-            data=TextProcessingJobData(
-                text="Sample text",
-                operation="analyze"
-            ),
+            agent_identifier="simple_prompt",
+            data={
+                "prompt": "Hello world",
+                "max_tokens": 100
+            },
             priority=5,
-            tags=["analysis", "text"]
+            tags=["test", "prompt"]
         )
+        assert request.agent_identifier == "simple_prompt"
+        assert request.data == {"prompt": "Hello world", "max_tokens": 100}
         assert request.priority == 5
-        assert request.tags == ["analysis", "text"]
-        assert request.data.job_type == JobType.text_processing
+        assert request.tags == ["test", "prompt"]
 
     def test_job_create_request_invalid_priority(self):
         """Test JobCreateRequest with invalid priority"""
         with pytest.raises(ValidationError) as exc_info:
             JobCreateRequest(
-                data=TextProcessingJobData(
-                    text="Sample text",
-                    operation="analyze"
-                ),
+                agent_identifier="simple_prompt",
+                data={"prompt": "test"},
                 priority=15  # Priority > 10
             )
         assert "less than or equal to 10" in str(exc_info.value)
 
+    def test_job_create_request_minimal(self):
+        """Test JobCreateRequest with minimal data"""
+        request = JobCreateRequest(
+            agent_identifier="simple_prompt",
+            data={"prompt": "test"}
+        )
+        assert request.agent_identifier == "simple_prompt"
+        assert request.data == {"prompt": "test"}
+        assert request.priority == 0  # default
+        assert request.tags is None
+
     def test_job_response_valid(self):
         """Test JobResponse with valid data"""
         response = JobResponse(
-            id="test-job-id",
+            id="job_123",
             status=JobStatus.completed,
-            data={"job_type": "text_processing", "text": "Sample"},
-            result="Processing completed",
+            agent_identifier="simple_prompt",
+            data={"prompt": "Hello", "max_tokens": 100},
+            result="Hello! How can I help you today?",
             created_at=datetime.now(),
             updated_at=datetime.now()
         )
-        assert response.id == "test-job-id"
+        assert response.id == "job_123"
         assert response.status == JobStatus.completed
-        assert response.result == "Processing completed"
+        assert response.agent_identifier == "simple_prompt"
+        assert response.result == "Hello! How can I help you today?"
+        assert response.error_message is None
 
     def test_job_list_response_valid(self):
         """Test JobListResponse with valid data"""
         job = JobResponse(
-            id="test-job-id",
-            status=JobStatus.completed,
-            data={"job_type": "text_processing"},
+            id="job_123",
+            status=JobStatus.pending,
+            agent_identifier="simple_prompt",
+            data={"prompt": "test"},
             created_at=datetime.now(),
             updated_at=datetime.now()
         )
@@ -266,25 +197,24 @@ class TestJobRequestResponseModels:
 
     def test_job_create_response_valid(self):
         """Test JobCreateResponse with valid data"""
-        response = JobCreateResponse(
-            job_id="test-job-id",
-            message="Job created successfully"
-        )
-        assert response.job_id == "test-job-id"
+        response = JobCreateResponse(job_id="job_123")
+        assert response.job_id == "job_123"
         assert response.success is True
 
     def test_job_detail_response_valid(self):
         """Test JobDetailResponse with valid data"""
         job = JobResponse(
-            id="test-job-id",
-            status=JobStatus.completed,
-            data={"job_type": "text_processing"},
+            id="job_123",
+            status=JobStatus.running,
+            agent_identifier="simple_prompt",
+            data={"prompt": "test"},
             created_at=datetime.now(),
             updated_at=datetime.now()
         )
         response = JobDetailResponse(job=job)
-        assert response.job.id == "test-job-id"
+        assert response.job.id == "job_123"
         assert response.success is True
+
 
 class TestJobUpdateModels:
     """Test job update models"""
@@ -293,31 +223,33 @@ class TestJobUpdateModels:
         """Test JobStatusUpdate with valid data"""
         update = JobStatusUpdate(
             status=JobStatus.completed,
-            result="Job completed successfully"
+            result="Task completed successfully"
         )
         assert update.status == JobStatus.completed
-        assert update.result == "Job completed successfully"
+        assert update.result == "Task completed successfully"
+        assert update.error_message is None
 
     def test_job_status_update_completed_without_result(self):
-        """Test JobStatusUpdate with completed status but no result"""
+        """Test JobStatusUpdate completed status requires result"""
         with pytest.raises(ValidationError) as exc_info:
             JobStatusUpdate(status=JobStatus.completed)
         assert "Result is required when status is completed" in str(exc_info.value)
 
     def test_job_status_update_failed_without_error(self):
-        """Test JobStatusUpdate with failed status but no error message"""
+        """Test JobStatusUpdate failed status requires error message"""
         with pytest.raises(ValidationError) as exc_info:
             JobStatusUpdate(status=JobStatus.failed)
         assert "Error message is required when status is failed" in str(exc_info.value)
 
     def test_job_status_update_failed_with_error(self):
-        """Test JobStatusUpdate with failed status and error message"""
+        """Test JobStatusUpdate with failed status and error"""
         update = JobStatusUpdate(
             status=JobStatus.failed,
-            error_message="Job failed due to timeout"
+            error_message="Processing failed"
         )
         assert update.status == JobStatus.failed
-        assert update.error_message == "Job failed due to timeout"
+        assert update.error_message == "Processing failed"
+
 
 class TestStatisticsModels:
     """Test statistics models"""
@@ -353,22 +285,20 @@ class TestStatisticsModels:
         assert response.stats.total_jobs == 50
         assert response.success is True
 
+
 class TestAuthenticationModels:
     """Test authentication models"""
 
     def test_auth_response_valid(self):
         """Test AuthResponse with valid data"""
         user = UserInfo(
-            id="test-user-id",
+            id="user_123",
             email="test@example.com"
         )
-        response = AuthResponse(
-            user=user,
-            message="Authentication successful"
-        )
-        assert response.user.id == "test-user-id"
-        assert response.user.email == "test@example.com"
+        response = AuthResponse(user=user)
+        assert response.user.id == "user_123"
         assert response.success is True
+
 
 class TestHealthModels:
     """Test health check models"""
@@ -379,81 +309,85 @@ class TestHealthModels:
             status="healthy",
             version="1.0.0",
             environment="development",
-            cors_origins=5
+            cors_origins=3
         )
         assert response.status == "healthy"
         assert response.version == "1.0.0"
         assert response.environment == "development"
-        assert response.cors_origins == 5
+        assert response.cors_origins == 3
         assert isinstance(response.timestamp, datetime)
 
+
 class TestModelSerialization:
-    """Test model serialization and deserialization"""
+    """Test model serialization and validation"""
 
     def test_job_create_request_serialization(self):
         """Test JobCreateRequest JSON serialization"""
         request = JobCreateRequest(
-            data=TextProcessingJobData(
-                text="Sample text",
-                operation="analyze"
-            ),
-            priority=1,
-            tags=["test"]
+            agent_identifier="simple_prompt",
+            data={"prompt": "Hello", "max_tokens": 500},
+            priority=8,
+            tags=["important", "test"]
         )
         
-        # Serialize to dict
-        request_dict = request.dict()
-        assert request_dict["priority"] == 1
-        assert request_dict["tags"] == ["test"]
-        assert request_dict["data"]["job_type"] == "text_processing"
-        
-        # Serialize to JSON
-        request_json = request.json()
-        assert isinstance(request_json, str)
-        assert "text_processing" in request_json
+        json_data = request.model_dump()
+        assert json_data["agent_identifier"] == "simple_prompt"
+        assert json_data["data"]["prompt"] == "Hello"
+        assert json_data["priority"] == 8
+        assert "important" in json_data["tags"]
 
     def test_job_response_serialization(self):
         """Test JobResponse JSON serialization"""
+        now = datetime.now()
         response = JobResponse(
-            id="test-id",
+            id="job_456",
             status=JobStatus.completed,
-            data={"job_type": "text_processing"},
-            result="Success",
-            created_at=datetime(2024, 1, 1, 12, 0, 0),
-            updated_at=datetime(2024, 1, 1, 12, 1, 0)
+            agent_identifier="simple_prompt",
+            data={"prompt": "Test"},
+            result="Test completed",
+            created_at=now,
+            updated_at=now
         )
         
-        response_dict = response.dict()
-        assert response_dict["id"] == "test-id"
-        assert response_dict["status"] == "completed"
-        assert isinstance(response_dict["created_at"], datetime)
+        json_data = response.model_dump()
+        assert json_data["id"] == "job_456"
+        assert json_data["status"] == "completed"
+        assert json_data["agent_identifier"] == "simple_prompt"
+        assert json_data["result"] == "Test completed"
+
 
 class TestModelValidationEdgeCases:
-    """Test edge cases and validation scenarios"""
+    """Test edge cases and validation boundaries"""
 
-    def test_empty_custom_data(self):
-        """Test CustomJobData with empty custom_data"""
-        job_data = CustomJobData(custom_data={})
-        assert job_data.custom_data == {}
+    def test_empty_agent_identifier(self):
+        """Test validation with empty agent identifier"""
+        with pytest.raises(ValidationError):
+            JobCreateRequest(
+                agent_identifier="",
+                data={"prompt": "test"}
+            )
 
-    def test_large_text_processing_data(self):
-        """Test TextProcessingJobData with maximum allowed text length"""
-        max_text = "x" * 50000  # Maximum allowed length
-        job_data = TextProcessingJobData(
-            text=max_text,
-            operation="analyze"
+    def test_large_job_data(self):
+        """Test handling of large job data"""
+        large_prompt = "x" * 10000  # 10KB prompt
+        request = JobCreateRequest(
+            agent_identifier="simple_prompt",
+            data={"prompt": large_prompt, "max_tokens": 1000}
         )
-        assert len(job_data.text) == 50000
+        assert len(request.data["prompt"]) == 10000
 
-    def test_minimal_web_scraping_data(self):
-        """Test WebScrapingJobData with minimal required fields"""
-        job_data = WebScrapingJobData(url="https://example.com")
-        assert job_data.url == "https://example.com"
-        assert job_data.selectors is None
-        assert job_data.options is None
+    def test_minimal_job_data(self):
+        """Test minimal valid job data"""
+        request = JobCreateRequest(
+            agent_identifier="test_agent",
+            data={}  # Empty data dict should be valid
+        )
+        assert request.data == {}
+        assert request.priority == 0
+        assert request.tags is None
 
     def test_job_status_update_running_status(self):
-        """Test JobStatusUpdate with running status (no validation constraints)"""
+        """Test JobStatusUpdate with running status (no result/error required)"""
         update = JobStatusUpdate(status=JobStatus.running)
         assert update.status == JobStatus.running
         assert update.result is None

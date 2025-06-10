@@ -169,7 +169,7 @@ async def get_optional_user(credentials: Optional[HTTPAuthorizationCredentials] 
         return user_data
         
     except Exception as e:
-        logger.debug("Optional auth failed", exception=e, token_prefix=credentials.credentials[:10] if credentials else "none")
+        logger.debug("Optional auth failed", error=str(e), token_prefix=credentials.credentials[:10] if credentials else "none")
         return None
 
 def require_user_access(resource_user_id: str, current_user: Dict[str, Any]) -> None:
@@ -242,7 +242,6 @@ def check_rate_limiting(user_id: str, action: str, limit_per_minute: int = 60) -
     Raises:
         HTTPException: If rate limit is exceeded
     """
-    # TODO: Implement actual rate limiting with Redis
     # For now, just log the rate limit check
     logger.debug(
         "Rate limit check",
@@ -250,15 +249,3 @@ def check_rate_limiting(user_id: str, action: str, limit_per_minute: int = 60) -
         action=action,
         limit_per_minute=limit_per_minute
     )
-    
-    # Simulate rate limit exceeded for demonstration
-    # In real implementation, check against Redis/cache
-    # if rate_limit_exceeded:
-    #     security_logger.log_rate_limit_exceeded(
-    #         identifier=user_id,
-    #         limit=f"{limit_per_minute}/minute"
-    #     )
-    #     raise HTTPException(
-    #         status_code=429,
-    #         detail=f"Rate limit exceeded: {limit_per_minute} requests per minute"
-    #     ) 

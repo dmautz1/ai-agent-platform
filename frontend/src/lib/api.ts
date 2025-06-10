@@ -10,6 +10,8 @@ import type {
   JobStatus,
   CreateJobRequest,
   CreateJobResponse,
+  JobListResponse,
+  JobDetailResponse,
   JobsQuery,
   JobsListResponse,
   BatchStatusRequest,
@@ -25,14 +27,14 @@ import type {
   
   // Agent types
   AgentInfo,
-  AgentTypesResponse,
+  AgentSchemaResponse,
   
   // System types
   HealthCheck,
   SystemStats,
   
   // Utility types
-} from './types';
+} from './models';
 
 // Create axios instance with base configuration
 const apiClient: AxiosInstance = axios.create({
@@ -52,14 +54,6 @@ apiClient.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
 
-    // Log request in development
-    if (import.meta.env.DEV) {
-      console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`, {
-        data: config.data,
-        params: config.params,
-      });
-    }
-
     return config;
   },
   (error) => {
@@ -71,10 +65,6 @@ apiClient.interceptors.request.use(
 // Response interceptor for error handling and logging
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
-    // Log response in development
-    if (import.meta.env.DEV) {
-      console.log(`API Response: ${response.status}`, response.data);
-    }
     return response;
   },
   (error: AxiosError) => {
@@ -82,7 +72,7 @@ apiClient.interceptors.response.use(
     if (error.response) {
       // Server responded with error status
       const status = error.response.status;
-      const data = error.response.data as any;
+      const data = error.response.data as { message?: string; detail?: string; errors?: Record<string, string[]> };
 
       console.error(`API Error ${status}:`, data);
 
@@ -159,8 +149,8 @@ export const api = {
         }, {} as Record<string, string>)
       ) : undefined;
       
-      const response = await apiClient.get<ApiResponse<Job[]>>('/jobs', { params });
-      return response.data.data || [];
+      const response = await apiClient.get<JobListResponse>('/jobs', { params });
+      return response.data.jobs || [];
     },
 
     // Get paginated jobs list
@@ -178,17 +168,30 @@ export const api = {
         }, {} as Record<string, string>)
       ) : undefined;
       
-      const response = await apiClient.get<ApiResponse<JobsListResponse>>('/jobs/list', { params });
-      return response.data.data || { jobs: [], pagination: { total: 0, page: 1, per_page: 20, total_pages: 0, has_next: false, has_prev: false }, filters_applied: {} };
+      const response = await apiClient.get<JobListResponse>('/jobs', { params });
+      
+      // Convert backend JobListResponse to frontend JobsListResponse format
+      return {
+        jobs: response.data.jobs || [],
+        pagination: {
+          total: response.data.total_count || 0,
+          page: 1, // Default values since backend doesn't return pagination info yet
+          per_page: response.data.total_count || 50,
+          total_pages: 1,
+          has_next: false,
+          has_prev: false
+        },
+        filters_applied: query || {}
+      };
     },
 
     // Get job by ID
     getById: async (id: string): Promise<Job> => {
-      const response = await apiClient.get<ApiResponse<Job>>(`/jobs/${id}`);
-      if (!response.data.data) {
+      const response = await apiClient.get<JobDetailResponse>(`/jobs/${id}`);
+      if (!response.data.job) {
         throw new Error('Job not found');
       }
-      return response.data.data;
+      return response.data.job;
     },
 
     // Create new job
@@ -251,6 +254,27 @@ export const api = {
       return response.data.data;
     },
 
+    // Rerun any job (creates new job with same config)
+    rerun: async (id: string): Promise<{ original_job_id: string; new_job_id: string; original_job_status: string; data: Job }> => {
+      const response = await apiClient.post<{
+        success: boolean;
+        message?: string;
+        original_job_id: string;
+        new_job_id: string;
+        original_job_status: string;
+        data: Job;
+      }>(`/jobs/${id}/rerun`);
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Failed to rerun job');
+      }
+      return {
+        original_job_id: response.data.original_job_id,
+        new_job_id: response.data.new_job_id,
+        original_job_status: response.data.original_job_status,
+        data: response.data.data
+      };
+    },
+
     // Get job logs
     getLogs: async (id: string): Promise<string[]> => {
       const response = await apiClient.get<ApiResponse<string[]>>(`/jobs/${id}/logs`);
@@ -260,22 +284,71 @@ export const api = {
 
   // Agent management
   agents: {
-    // Get available agent types
-    getTypes: async (): Promise<AgentInfo[]> => {
-      const response = await apiClient.get<ApiResponse<AgentTypesResponse>>('/agents/types');
-      return response.data.data?.agents || [];
+    // NEW: Get all agents from discovery system
+    getAll: async (): Promise<AgentInfo[]> => {
+      const response = await apiClient.get<{ agents?: Record<string, AgentInfo> }>('/agents');
+      const agents = response.data?.agents || {};
+      
+      // Convert the agents object to an array of AgentInfo
+      return Object.values(agents).map((agent: AgentInfo) => ({
+        identifier: agent.identifier,
+        name: agent.name,
+        description: agent.description,
+        class_name: agent.class_name,
+        lifecycle_state: agent.lifecycle_state,
+        supported_environments: agent.supported_environments || [],
+        version: agent.version || '1.0.0',
+        enabled: agent.enabled,
+        has_error: agent.has_error,
+        error_message: agent.error_message,
+        created_at: agent.created_at,
+        last_updated: agent.last_updated
+      }));
+    },
+
+    // NEW: Get detailed agent information by identifier
+    getById: async (agentId: string): Promise<AgentInfo> => {
+      const response = await apiClient.get<{ agent?: AgentInfo }>(`/agents/${agentId}`);
+      const agent = response.data?.agent;
+      
+      if (!agent) {
+        throw new Error(`Agent ${agentId} not found`);
+      }
+      
+      return {
+        identifier: agent.identifier,
+        name: agent.name,
+        description: agent.description,
+        class_name: agent.class_name,
+        lifecycle_state: agent.lifecycle_state,
+        supported_environments: agent.supported_environments || [],
+        version: agent.version || '1.0.0',
+        enabled: agent.enabled,
+        has_error: agent.has_error,
+        error_message: agent.error_message,
+        created_at: agent.created_at,
+        last_updated: agent.last_updated,
+        runtime_info: agent.runtime_info,
+        instance_available: agent.instance_available
+      };
+    },
+
+    // NEW: Get agent schema for dynamic form generation
+    getSchema: async (agentId: string): Promise<AgentSchemaResponse> => {
+      const response = await apiClient.get<AgentSchemaResponse>(`/agents/${agentId}/schema`);
+      return response.data;
     },
 
     // Get agent configuration
-    getConfig: async (agentType: string): Promise<Record<string, any>> => {
-      const response = await apiClient.get<ApiResponse<Record<string, any>>>(`/agents/${agentType}/config`);
+    getConfig: async (agentId: string): Promise<Record<string, unknown>> => {
+      const response = await apiClient.get<ApiResponse<Record<string, unknown>>>(`/agents/${agentId}/config`);
       return response.data.data || {};
     },
 
     // Test agent connectivity
-    test: async (agentType: string): Promise<boolean> => {
+    test: async (agentId: string): Promise<boolean> => {
       try {
-        const response = await apiClient.post<ApiResponse<{ success: boolean }>>(`/agents/${agentType}/test`);
+        const response = await apiClient.post<ApiResponse<{ success: boolean }>>(`/agents/${agentId}/test`);
         return response.data.data?.success || false;
       } catch {
         return false;
@@ -351,8 +424,8 @@ export const api = {
       return response.data.data || {
         total_jobs: 0,
         jobs_by_status: { pending: 0, running: 0, completed: 0, failed: 0, cancelled: 0 },
-        jobs_by_agent_type: { text_processing: 0, summarization: 0, web_scraping: 0 },
-        average_processing_time_by_agent: { text_processing: 0, summarization: 0, web_scraping: 0 },
+        jobs_by_agent_identifier: {},
+        average_processing_time_by_agent: {},
         success_rate_percentage: 0,
         peak_concurrent_jobs: 0,
         uptime_hours: 0,
@@ -362,23 +435,27 @@ export const api = {
 };
 
 // Helper functions for error handling
-export const handleApiError = (error: any): string => {
+export const handleApiError = (error: unknown): string => {
+  // Handle ApiError instances
+  if (error && typeof error === 'object' && 'status' in error) {
+    const apiError = error as ApiError;
+    if (apiError.status === 422 && apiError.errors) {
+      return formatValidationErrors(apiError.errors);
+    }
+    return apiError.message || 'An unexpected error occurred';
+  }
+  
+  // Handle Error instances
+  if (error instanceof Error) {
+    return error.message;
+  }
+  
+  // Handle string errors
   if (typeof error === 'string') {
     return error;
   }
   
-  if (error?.message) {
-    return error.message;
-  }
-  
-  if (error?.data?.message) {
-    return error.data.message;
-  }
-
-  if (error?.data?.detail) {
-    return error.data.detail;
-  }
-  
+  // Default fallback
   return 'An unexpected error occurred';
 };
 
@@ -390,8 +467,8 @@ export const formatValidationErrors = (errors: Record<string, string[]>): string
 };
 
 // Helper function to check if error is a validation error
-export const isValidationError = (error: any): error is ApiError & { status: 422 } => {
-  return error?.status === 422 && error?.errors;
+export const isValidationError = (error: ApiError): error is ApiError & { status: 422 } => {
+  return error.status === 422 && Boolean(error.errors);
 };
 
 // Helper function to set auth token
@@ -421,6 +498,6 @@ export type {
   ApiError,
   HealthCheck,
   SystemStats,
-} from './types';
+} from './models';
 
 export default apiClient; 

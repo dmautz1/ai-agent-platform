@@ -1,8 +1,8 @@
 """
-AI Agent Template - Main Application
+AI Agent Platform - Main Application
 
-Simplified main application using the new self-contained agent framework.
-Agents are automatically discovered and registered from the agents/ directory.
+A production-ready platform for building and deploying AI agents with React frontend,
+FastAPI backend, and Supabase database integration.
 """
 
 from fastapi import FastAPI, HTTPException, Depends
@@ -11,7 +11,12 @@ from fastapi.security import HTTPBearer
 import uvicorn
 import logging.config
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
+import asyncio
+import os
+import time
+from contextlib import asynccontextmanager
+from fastapi.responses import JSONResponse
 
 from auth import get_current_user, get_optional_user
 from config.environment import get_settings, validate_required_settings, get_logging_config
@@ -19,12 +24,13 @@ from logging_system import (
     setup_logging_middleware, get_logger, get_performance_logger,
     get_security_logger, log_startup_info, log_shutdown_info
 )
-from config.adk import validate_adk_environment, get_adk_config
+from config.google_ai import validate_google_ai_environment, get_google_ai_config
 from agent import get_agent_registry
-from agent_framework import register_agent_endpoints, get_all_agent_info
+from agent_discovery import get_agent_discovery_system
+from agent_framework import register_agent_endpoints, get_all_agent_info, get_registered_agents
 from agents import discover_and_register_agents, get_discovery_status
 from job_pipeline import start_job_pipeline, stop_job_pipeline, get_job_pipeline
-from database import get_database_operations
+from database import get_database_operations, check_database_health
 from models import JobCreateRequest, JobResponse, JobListResponse, JobCreateResponse, JobDetailResponse
 from config.agent_config import get_agent_config_manager, get_agent_config, AgentProfile, AgentPerformanceMode
 from static_files import setup_static_file_serving, get_static_file_info
@@ -42,51 +48,154 @@ logger = get_logger(__name__)
 perf_logger = get_performance_logger()
 security_logger = get_security_logger()
 
+class AgentError(HTTPException):
+    """Base exception for agent-related errors"""
+    pass
+
+class AgentNotFoundError(AgentError):
+    """Exception for when an agent is not found"""
+    def __init__(self, agent_identifier: str, detail: str = None):
+        self.agent_identifier = agent_identifier
+        detail = detail or f"Agent '{agent_identifier}' not found"
+        super().__init__(status_code=404, detail=detail)
+
+class AgentDisabledError(AgentError):
+    """Exception for when an agent is disabled"""
+    def __init__(self, agent_identifier: str, lifecycle_state: str = None, detail: str = None):
+        self.agent_identifier = agent_identifier
+        self.lifecycle_state = lifecycle_state
+        if not detail:
+            if lifecycle_state:
+                detail = f"Agent '{agent_identifier}' is {lifecycle_state} and not available for use"
+            else:
+                detail = f"Agent '{agent_identifier}' is not enabled"
+        super().__init__(status_code=400, detail=detail)
+
+class AgentNotLoadedError(AgentError):
+    """Exception for when an agent exists but is not loaded"""
+    def __init__(self, agent_identifier: str, detail: str = None):
+        self.agent_identifier = agent_identifier
+        detail = detail or f"Agent '{agent_identifier}' is not currently loaded or available"
+        super().__init__(status_code=503, detail=detail)
+
+def validate_agent_exists_and_enabled(agent_identifier: str, require_loaded: bool = False) -> Dict[str, Any]:
+    """
+    Centralized agent validation with consistent error handling.
+    
+    Args:
+        agent_identifier: The agent identifier to validate
+        require_loaded: Whether to require the agent instance to be loaded
+        
+    Returns:
+        dict: Agent metadata and instance information
+        
+    Raises:
+        AgentNotFoundError: If agent doesn't exist
+        AgentDisabledError: If agent is disabled
+        AgentNotLoadedError: If require_loaded=True and agent not loaded
+    """
+    # Check if agent exists via discovery system
+    discovery = get_agent_discovery_system()
+    metadata = discovery.get_agent_metadata(agent_identifier)
+    
+    if not metadata:
+        logger.warning("Agent validation failed - not found", agent_identifier=agent_identifier)
+        raise AgentNotFoundError(agent_identifier)
+    
+    # Check if agent is enabled
+    if metadata.lifecycle_state.value != "enabled":
+        logger.warning(
+            "Agent validation failed - not enabled", 
+            agent_identifier=agent_identifier,
+            lifecycle_state=metadata.lifecycle_state.value
+        )
+        raise AgentDisabledError(agent_identifier, metadata.lifecycle_state.value)
+    
+    # Check if agent has load errors
+    if metadata.load_error:
+        logger.warning(
+            "Agent validation failed - has load error",
+            agent_identifier=agent_identifier,
+            load_error=metadata.load_error
+        )
+        raise AgentDisabledError(
+            agent_identifier,
+            detail=f"Agent '{agent_identifier}' has load errors: {metadata.load_error}"
+        )
+    
+    result = {
+        "metadata": metadata,
+        "instance": None,
+        "instance_available": False
+    }
+    
+    # Check for loaded instance if required
+    if require_loaded:
+        # Try to get registered agents first
+        registered_agents = get_registered_agents()
+        agent_instance = registered_agents.get(agent_identifier)
+        
+        if not agent_instance:
+            # Try to get from registry as fallback
+            registry = get_agent_registry()
+            agent_instance = registry.get_agent(agent_identifier)
+        
+        if not agent_instance:
+            logger.warning(
+                "Agent validation failed - not loaded",
+                agent_identifier=agent_identifier
+            )
+            raise AgentNotLoadedError(agent_identifier)
+        
+        result["instance"] = agent_instance
+        result["instance_available"] = True
+    
+    logger.debug("Agent validation successful", agent_identifier=agent_identifier)
+    return result
+
+def log_agent_access(agent_identifier: str, operation: str, user_id: str = None, success: bool = True):
+    """Centralized logging for agent access operations"""
+    log_data = {
+        "agent_identifier": agent_identifier,
+        "operation": operation,
+        "success": success
+    }
+    
+    if user_id:
+        log_data["user_id"] = user_id
+    
+    if success:
+        logger.info(f"Agent {operation} successful", **log_data)
+    else:
+        logger.warning(f"Agent {operation} failed", **log_data)
+
 def get_cors_origins() -> List[str]:
     """Get CORS origins for the application - used by tests and configuration."""
-    return settings.get_cors_origins()
-
-# Initialize FastAPI app
-app = FastAPI(
-    title=settings.app_name,
-    description="AI Agent Template with Self-Contained Agent Framework v2.0",
-    version=settings.app_version,
-    debug=settings.debug
-)
+    return get_settings().get_cors_origins()
 
 # CORS Configuration
 cors_origins = get_cors_origins()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=settings.cors_allow_credentials,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=[
-        "Authorization", "Content-Type", "Accept", "Origin",
-        "User-Agent", "DNT", "Cache-Control", "X-Mx-ReqToken",
-        "Keep-Alive", "X-Requested-With", "If-Modified-Since", "X-CSRF-Token"
-    ],
-    expose_headers=["Content-Length", "Content-Range", "X-Content-Range"],
-    max_age=settings.cors_max_age,
-)
-
-# Set up comprehensive logging middleware
-setup_logging_middleware(app)
-
-# Security
-security = HTTPBearer()
-
-@app.on_startup
-async def startup_event():
-    """Application startup with automatic agent discovery and registration"""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager"""
+    # Startup
     log_startup_info()
     
     logger.info(
-        "Starting AI Agent Template v2.0",
-        cors_origins_count=len(cors_origins),
-        debug_mode=settings.debug,
-        environment=settings.environment.value
+        "Starting AI Agent Platform v2.0",
+        extra={
+            "startup_info": {
+                "version": settings.app_version,
+                "environment": settings.environment.value,
+                "debug": settings.debug,
+                "cors_origins": len(cors_origins),
+                "job_queue_enabled": True,
+                "agents_discovered": len(get_agent_discovery_system().discover_agents()),
+                "enabled_agents": len(get_agent_discovery_system().get_enabled_agents()),
+                "disabled_agents": len(get_agent_discovery_system().discover_agents()) - len(get_agent_discovery_system().get_enabled_agents())
+            }
+        }
     )
     
     try:
@@ -127,10 +236,10 @@ async def startup_event():
         raise
     
     logger.info("Application ready to accept requests")
-
-@app.on_shutdown
-async def shutdown_event():
-    """Application shutdown event with comprehensive logging"""
+    
+    yield
+    
+    # Shutdown
     logger.info("Beginning application shutdown")
     
     # Stop job processing pipeline
@@ -141,6 +250,35 @@ async def shutdown_event():
         logger.error("Error stopping job pipeline", exception=e)
     
     log_shutdown_info()
+
+# Create FastAPI app with lifespan
+app = FastAPI(
+    title="AI Agent Platform API",
+    description="AI Agent Platform v2.0 - Self-contained agent framework with automatic discovery",
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=[
+        "Authorization", "Content-Type", "Accept", "Origin",
+        "User-Agent", "DNT", "Cache-Control", "X-Mx-ReqToken",
+        "Keep-Alive", "X-Requested-With", "If-Modified-Since", "X-CSRF-Token"
+    ],
+    expose_headers=["Content-Length", "Content-Range", "X-Content-Range"],
+    max_age=settings.cors_max_age,
+)
+
+# Set up comprehensive logging middleware
+setup_logging_middleware(app)
+
+# Security
+security = HTTPBearer()
 
 # Core Application Endpoints
 @app.get("/")
@@ -156,31 +294,58 @@ async def root():
             "environment": settings.environment.value,
             "framework_version": "2.0",
             "agent_framework": "self-contained",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 @app.get("/health")
 async def health_check():
-    """Detailed health check endpoint - public"""
-    with perf_logger.time_operation("health_check_detailed"):
-        logger.info("Detailed health check requested")
+    """Health check endpoint with detailed status"""
+    with perf_logger.time_operation("health_check"):
+        logger.info("Health check requested")
         
-        # Get performance metrics summary
-        metrics_summary = perf_logger.get_metrics_summary()
-        
-        # Get agent discovery status
-        discovery_status = get_discovery_status()
+        try:
+            # Quick database connectivity check
+            db_health = await check_database_health()
+            
+            health_status = {
+                "status": "healthy",
+                "version": settings.app_version,
+                "environment": settings.environment.value,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "database": db_health,
+                "cors_origins": len(get_cors_origins())
+            }
+            
+            return health_status
+            
+        except Exception as e:
+            logger.error("Health check failed", exception=e)
+            return {
+                "status": "unhealthy",
+                "version": settings.app_version,
+                "environment": settings.environment.value,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "error": str(e)
+            }
+
+@app.get("/stats")
+async def get_public_stats():
+    """Get public job statistics - public endpoint"""
+    try:
+        db_ops = get_database_operations()
+        stats = await db_ops.get_job_statistics()
         
         return {
-            "status": "healthy",
-            "version": settings.app_version,
-            "environment": settings.environment.value,
-            "framework_version": "2.0",
-            "cors_origins": len(cors_origins),
-            "debug": settings.debug,
-            "agent_status": discovery_status,
-            "timestamp": datetime.utcnow().isoformat(),
-            "performance_metrics": metrics_summary if settings.is_development() else {}
+            "status": "success",
+            "statistics": stats,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error("Failed to get public statistics", exception=e)
+        return {
+            "status": "error",
+            "message": "Failed to retrieve statistics",
+            "error": str(e)
         }
 
 @app.get("/cors-info") 
@@ -189,20 +354,25 @@ async def cors_info():
     with perf_logger.time_operation("cors_info"):
         logger.info("CORS info requested")
         
-        if settings.is_development():
+        if get_settings().is_development():
             return {
-                "cors_origins": cors_origins,
-                "environment": settings.environment.value,
-                "allow_credentials": settings.cors_allow_credentials,
-                "max_age": settings.cors_max_age,
+                "cors_origins": get_cors_origins(),
+                "cors_settings": {
+                    "allow_credentials": get_settings().cors_allow_credentials,
+                    "max_age": get_settings().cors_max_age
+                },
+                "environment": get_settings().environment.value,
                 "message": "CORS configuration (development mode)"
             }
         else:
             return {
                 "cors_enabled": True,
-                "origins_count": len(cors_origins),
-                "environment": settings.environment.value,
-                "allow_credentials": settings.cors_allow_credentials,
+                "origins_count": len(get_cors_origins()),
+                "cors_settings": {
+                    "allow_credentials": get_settings().cors_allow_credentials,
+                    "max_age": get_settings().cors_max_age
+                },
+                "environment": get_settings().environment.value,
                 "message": "CORS configuration (production mode - details hidden)"
             }
 
@@ -231,22 +401,55 @@ async def list_agents():
         logger.info("Agent list requested")
         
         try:
-            discovery_status = get_discovery_status()
-            agent_info = get_all_agent_info()
+            # Use agent discovery system for proper agent metadata retrieval
+            discovery = get_agent_discovery_system()
+            
+            # Get discovery statistics
+            discovery_stats = discovery.get_discovery_stats()
+            
+            # Get all agents with metadata
+            all_agents = discovery.discover_agents()
+            
+            # Get enabled agents for environment
+            enabled_agents = discovery.get_enabled_agents()
+            
+            # Format agent information for response
+            agents_info = {}
+            for identifier, metadata in all_agents.items():
+                agents_info[identifier] = {
+                    "identifier": metadata.identifier,
+                    "name": metadata.name,
+                    "description": metadata.description,
+                    "class_name": metadata.class_name,
+                    "lifecycle_state": metadata.lifecycle_state.value,
+                    "supported_environments": [env.value for env in metadata.supported_environments],
+                    "version": metadata.version,
+                    "enabled": metadata.lifecycle_state.value == "enabled" and not metadata.load_error,
+                    "has_error": bool(metadata.load_error),
+                    "error_message": metadata.load_error if metadata.load_error else None,
+                    "created_at": metadata.created_at.isoformat(),
+                    "last_updated": metadata.last_updated.isoformat()
+                }
             
             return {
                 "status": "success",
                 "framework_version": "2.0",
-                "discovery_status": discovery_status,
-                "agents": agent_info,
-                "total_agents": discovery_status['total_agents']
+                "discovery_system": "agent_discovery",
+                "discovery_stats": discovery_stats,
+                "agents": agents_info,
+                "summary": {
+                    "total_agents": len(all_agents),
+                    "enabled_agents": len(enabled_agents),
+                    "disabled_agents": len(all_agents) - len(enabled_agents),
+                    "current_environment": discovery.current_environment.value
+                }
             }
             
         except Exception as e:
-            logger.error("Failed to list agents", exception=e)
+            logger.error("Failed to list agents via discovery system", exception=e)
             return {
                 "status": "error",
-                "message": "Failed to retrieve agent list",
+                "message": "Failed to retrieve agent list via discovery system",
                 "error": str(e)
             }
 
@@ -254,28 +457,66 @@ async def list_agents():
 async def get_agent_info(agent_name: str):
     """Get detailed information about a specific agent - public endpoint"""
     with perf_logger.time_operation("get_agent_info", agent_name=agent_name):
-        logger.info("Agent info requested", agent_name=agent_name)
+        log_agent_access(agent_name, "info_request")
         
         try:
-            registry = get_agent_registry()
-            agent = registry.get_agent(agent_name)
+            # Use centralized validation - this endpoint shows all agents including disabled ones
+            discovery = get_agent_discovery_system()
+            metadata = discovery.get_agent_metadata(agent_name)
             
-            if not agent:
-                raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
+            if not metadata:
+                log_agent_access(agent_name, "info_request", success=False)
+                raise AgentNotFoundError(agent_name)
             
-            info = await agent.get_agent_info()
-            return {
-                "status": "success",
-                "agent": info
+            # Format detailed agent information
+            agent_info = {
+                "identifier": metadata.identifier,
+                "name": metadata.name,
+                "description": metadata.description,
+                "class_name": metadata.class_name,
+                "module_path": metadata.module_path,
+                "lifecycle_state": metadata.lifecycle_state.value,
+                "supported_environments": [env.value for env in metadata.supported_environments],
+                "version": metadata.version,
+                "enabled": metadata.lifecycle_state.value == "enabled" and not metadata.load_error,
+                "has_error": bool(metadata.load_error),
+                "error_message": metadata.load_error if metadata.load_error else None,
+                "created_at": metadata.created_at.isoformat(),
+                "last_updated": metadata.last_updated.isoformat(),
+                "metadata_extras": metadata.metadata_extras or {}
             }
             
-        except HTTPException:
+            # Try to get additional runtime information from agent instance if available
+            try:
+                registry = get_agent_registry()
+                agent_instance = registry.get_agent(agent_name)
+                
+                if agent_instance:
+                    runtime_info = await agent_instance.get_agent_info()
+                    agent_info["runtime_info"] = runtime_info
+                    agent_info["instance_available"] = True
+                else:
+                    agent_info["instance_available"] = False
+                    
+            except Exception as e:
+                logger.warning("Could not get runtime agent info", agent_name=agent_name, exception=e)
+                agent_info["instance_available"] = False
+                agent_info["runtime_error"] = str(e)
+            
+            return {
+                "status": "success",
+                "agent": agent_info
+            }
+            
+        except AgentError:
+            # Re-raise agent-specific errors as they have proper HTTP status codes
             raise
         except Exception as e:
-            logger.error("Failed to get agent info", exception=e, agent_name=agent_name)
+            log_agent_access(agent_name, "info_request", success=False)
+            logger.error("Failed to get agent info via discovery system", exception=e, agent_name=agent_name)
             return {
                 "status": "error",
-                "message": "Failed to retrieve agent information",
+                "message": "Failed to retrieve agent information via discovery system",
                 "error": str(e)
             }
 
@@ -283,24 +524,25 @@ async def get_agent_info(agent_name: str):
 async def get_agent_health(agent_name: str):
     """Get health status of a specific agent - public endpoint"""
     with perf_logger.time_operation("get_agent_health", agent_name=agent_name):
-        logger.info("Agent health check requested", agent_name=agent_name)
+        log_agent_access(agent_name, "health_check")
         
         try:
-            registry = get_agent_registry()
-            agent = registry.get_agent(agent_name)
+            # Use centralized validation - health checks require loaded and enabled agents
+            validation_result = validate_agent_exists_and_enabled(agent_name, require_loaded=True)
+            agent_instance = validation_result["instance"]
             
-            if not agent:
-                raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
-            
-            health = await agent.health_check()
+            health = await agent_instance.health_check()
             return {
                 "status": "success",
                 "health": health
             }
             
-        except HTTPException:
+        except AgentError:
+            log_agent_access(agent_name, "health_check", success=False)
+            # Re-raise agent-specific errors as they have proper HTTP status codes
             raise
         except Exception as e:
+            log_agent_access(agent_name, "health_check", success=False)
             logger.error("Failed to get agent health", exception=e, agent_name=agent_name)
             return {
                 "status": "error",
@@ -308,55 +550,223 @@ async def get_agent_health(agent_name: str):
                 "error": str(e)
             }
 
-# Google ADK Configuration endpoints
-@app.get("/adk/validate")
-async def validate_adk_setup():
-    """Validate Google ADK configuration - public endpoint for setup validation"""
-    with perf_logger.time_operation("adk_validate"):
-        logger.info("ADK configuration validation requested")
+@app.get("/agents/{agent_id}/schema")
+async def get_agent_schema(agent_id: str):
+    """Get job data schema for an agent to enable dynamic form generation - public endpoint"""
+    with perf_logger.time_operation("get_agent_schema", agent_id=agent_id):
+        log_agent_access(agent_id, "schema_request")
         
         try:
-            validation_result = validate_adk_environment()
+            # Use centralized validation - schema requests can work with just discovery data
+            # but prefer loaded instances for model access
+            discovery = get_agent_discovery_system()
+            metadata = discovery.get_agent_metadata(agent_id)
             
-            if validation_result["valid"]:
-                logger.info("ADK configuration validation successful")
+            if not metadata:
+                log_agent_access(agent_id, "schema_request", success=False)
+                raise AgentNotFoundError(agent_id)
+            
+            # Try to get agent instance for schema extraction (not required)
+            agent_instance = None
+            try:
+                # Get registered agents to access schema information
+                registered_agents = get_registered_agents()
+                agent_instance = registered_agents.get(agent_id)
+                
+                if not agent_instance:
+                    # Try to get from registry as fallback
+                    registry = get_agent_registry()
+                    agent_instance = registry.get_agent(agent_id)
+            except Exception as e:
+                logger.warning("Could not load agent instance for schema", agent_id=agent_id, exception=e)
+            
+            if not agent_instance:
                 return {
                     "status": "success",
-                    "message": "Google ADK is properly configured",
-                    "config": validation_result["config"]
+                    "message": f"Agent '{agent_id}' found but not currently loaded - schema unavailable",
+                    "agent_id": agent_id,
+                    "agent_name": metadata.name,
+                    "description": metadata.description,
+                    "agent_found": True,
+                    "instance_available": False,
+                    "available_models": [],
+                    "schemas": {}
                 }
-            else:
-                logger.warning("ADK configuration validation failed", errors=validation_result["errors"])
-                return {
-                    "status": "error",
-                    "message": "Google ADK configuration has issues",
-                    "errors": validation_result["errors"],
-                    "warnings": validation_result["warnings"]
-                }
-                
-        except Exception as e:
-            logger.error("ADK validation failed with exception", exception=e)
-            return {
-                "status": "error",
-                "message": "Failed to validate ADK configuration",
-                "error": str(e)
+            
+            # Extract job data models from the agent
+            models = agent_instance.get_models() if hasattr(agent_instance, 'get_models') else {}
+            
+            schema_info = {
+                "agent_id": agent_id,
+                "agent_name": metadata.name,
+                "description": metadata.description,
+                "available_models": list(models.keys()),
+                "schemas": {}
             }
-
-@app.get("/adk/models")
-async def get_available_models():
-    """Get available Google AI models - public endpoint"""
-    with perf_logger.time_operation("adk_get_models"):
-        logger.info("Available models requested")
-        
-        try:
-            adk_config = get_adk_config()
-            models = adk_config.get_available_models()
+            
+            # Generate JSON schemas for each model
+            for model_name, model_class in models.items():
+                try:
+                    # Generate Pydantic JSON schema
+                    schema = model_class.model_json_schema()
+                    
+                    # Enhance schema with additional metadata for form generation
+                    enhanced_schema = {
+                        "model_name": model_name,
+                        "model_class": model_class.__name__,
+                        "title": schema.get("title", model_name),
+                        "description": schema.get("description", f"Job data schema for {model_name}"),
+                        "type": schema.get("type", "object"),
+                        "properties": schema.get("properties", {}),
+                        "required": schema.get("required", []),
+                        "definitions": schema.get("$defs", schema.get("definitions", {}))
+                    }
+                    
+                    # Add form generation hints
+                    for prop_name, prop_schema in enhanced_schema["properties"].items():
+                        # Only infer form_field_type if not explicitly set
+                        if "form_field_type" not in prop_schema:
+                            prop_schema["form_field_type"] = _infer_form_field_type(prop_schema)
+                    
+                    schema_info["schemas"][model_name] = enhanced_schema
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to generate schema for model {model_name}", exception=e)
+                    schema_info["schemas"][model_name] = {
+                        "error": f"Failed to generate schema: {str(e)}",
+                        "model_name": model_name
+                    }
+            
+            if not schema_info["schemas"]:
+                return {
+                    "status": "success",
+                    "message": f"Agent '{agent_id}' has no defined job data models",
+                    "instance_available": True,
+                    **schema_info
+                }
             
             return {
                 "status": "success",
-                "models": models,
-                "default_model": adk_config.default_model,
-                "service": "Vertex AI" if adk_config.use_vertex_ai else "Google AI Studio"
+                "instance_available": True,
+                **schema_info
+            }
+            
+        except AgentError:
+            log_agent_access(agent_id, "schema_request", success=False)
+            # Re-raise agent-specific errors as they have proper HTTP status codes
+            raise
+        except Exception as e:
+            log_agent_access(agent_id, "schema_request", success=False)
+            logger.error("Failed to get agent schema", exception=e, agent_id=agent_id)
+            return {
+                "status": "error",
+                "message": "Failed to retrieve agent schema",
+                "error": str(e)
+            }
+
+def _infer_form_field_type(prop_schema: Dict[str, Any]) -> str:
+    """Infer appropriate form field type from JSON schema property"""
+    prop_type = prop_schema.get("type", "string")
+    prop_format = prop_schema.get("format")
+    
+    # Handle anyOf schemas (e.g., field can be object or null)
+    if "anyOf" in prop_schema:
+        any_of_types = []
+        for option in prop_schema["anyOf"]:
+            if "type" in option and option["type"] != "null":
+                any_of_types.append(option["type"])
+        
+        # Use the first non-null type for form field inference
+        if any_of_types:
+            prop_type = any_of_types[0]
+            # If it's an object type in anyOf, use object field type
+            if "object" in any_of_types:
+                return "object"
+    
+    if prop_type == "string":
+        if prop_format == "password":
+            return "password"
+        elif prop_format in ["email", "uri", "date", "time", "date-time"]:
+            return prop_format
+        elif prop_schema.get("enum"):
+            return "select"
+        elif prop_schema.get("maxLength", 0) > 100:
+            return "textarea"
+        else:
+            return "text"
+    elif prop_type == "integer" or prop_type == "number":
+        return "number"
+    elif prop_type == "boolean":
+        return "checkbox"
+    elif prop_type == "array":
+        return "array"
+    elif prop_type == "object":
+        return "object"
+    else:
+        return "text"
+
+# Google AI Configuration endpoints
+@app.get("/google-ai/validate")
+async def validate_google_ai_setup():
+    """Validate Google AI configuration - public endpoint for setup validation"""
+    with perf_logger.time_operation("google_ai_validate"):
+        logger.info("Google AI configuration validation requested")
+        
+        try:
+            validation_result = validate_google_ai_environment()
+            
+            # Handle both old and new format of validation_result
+            is_valid = validation_result.get("valid", False)
+            
+            if is_valid:
+                logger.info("Google AI configuration validation successful")
+                return {
+                    "status": "valid",
+                    "message": "Google AI is properly configured",
+                    "config": validation_result.get("config", {})
+                }
+            else:
+                logger.warning("Google AI configuration validation failed", errors=validation_result.get("errors", []))
+                return {
+                    "status": "invalid", 
+                    "message": "Google AI configuration has issues",
+                    "errors": validation_result.get("errors", []),
+                    "warnings": validation_result.get("warnings", [])
+                }
+                
+        except Exception as e:
+            logger.error("Google AI validation failed with exception", exception=e)
+            return {
+                "status": "error",
+                "message": "Failed to validate Google AI configuration",
+                "error": str(e)
+            }
+
+@app.get("/google-ai/models")
+async def get_available_models():
+    """Get available Google AI models - public endpoint"""
+    with perf_logger.time_operation("google_ai_get_models"):
+        logger.info("Available models requested")
+        
+        try:
+            google_ai_config = get_google_ai_config()
+            
+            # Handle both config object and dict return
+            if hasattr(google_ai_config, 'get_available_models'):
+                models = google_ai_config.get_available_models()
+                default_model = google_ai_config.default_model
+                use_vertex_ai = google_ai_config.use_vertex_ai
+            else:
+                # Fallback for dict format
+                models = google_ai_config.get("available_models", [])
+                default_model = google_ai_config.get("default_model", "gemini-2.0-flash")
+                use_vertex_ai = google_ai_config.get("use_vertex_ai", False)
+            
+            return {
+                "status": "success",
+                "available_models": models,
+                "default_model": default_model,
+                "service": "Vertex AI" if use_vertex_ai else "Google AI Studio"
             }
             
         except Exception as e:
@@ -367,18 +777,18 @@ async def get_available_models():
                 "error": str(e)
             }
 
-@app.get("/adk/connection-test")
-async def test_adk_connection():
+@app.get("/google-ai/connection-test")
+async def test_google_ai_connection():
     """Test connection to Google AI services - public endpoint for setup testing"""
-    with perf_logger.time_operation("adk_connection_test"):
-        logger.info("ADK connection test requested")
+    with perf_logger.time_operation("google_ai_connection_test"):
+        logger.info("Google AI connection test requested")
         
         try:
-            adk_config = get_adk_config()
-            connection_result = adk_config.test_connection()
+            google_ai_config = get_google_ai_config()
+            connection_result = google_ai_config.test_connection()
             
             if connection_result["status"] == "success":
-                logger.info("ADK connection test successful")
+                logger.info("Google AI connection test successful")
                 return {
                     "status": "success",
                     "message": "Successfully connected to Google AI services",
@@ -387,7 +797,7 @@ async def test_adk_connection():
                     "project": connection_result.get("project")
                 }
             else:
-                logger.warning("ADK connection test failed", error=connection_result["error"])
+                logger.warning("Google AI connection test failed", error=connection_result["error"])
                 return {
                     "status": "error",
                     "message": "Failed to connect to Google AI services",
@@ -396,7 +806,426 @@ async def test_adk_connection():
                 }
                 
         except Exception as e:
-            logger.error("ADK connection test failed with exception", exception=e)
+            logger.error("Google AI connection test failed with exception", exception=e)
+            return {
+                "status": "error",
+                "message": "Connection test failed",
+                "error": str(e)
+            }
+
+# OpenAI Configuration endpoints
+@app.get("/openai/validate")
+async def validate_openai_setup():
+    """Validate OpenAI configuration - public endpoint for setup validation"""
+    with perf_logger.time_operation("openai_validate"):
+        logger.info("OpenAI configuration validation requested")
+        
+        try:
+            from config.openai import validate_openai_environment
+            validation_result = validate_openai_environment()
+            
+            is_valid = validation_result.get("valid", False)
+            
+            if is_valid:
+                logger.info("OpenAI configuration validation successful")
+                return {
+                    "status": "valid",
+                    "message": "OpenAI is properly configured",
+                    "config": validation_result.get("config", {})
+                }
+            else:
+                logger.warning("OpenAI configuration validation failed", errors=validation_result.get("errors", []))
+                return {
+                    "status": "invalid", 
+                    "message": "OpenAI configuration has issues",
+                    "errors": validation_result.get("errors", []),
+                    "warnings": validation_result.get("warnings", [])
+                }
+                
+        except Exception as e:
+            logger.error("OpenAI validation failed with exception", exception=e)
+            return {
+                "status": "error",
+                "message": "Failed to validate OpenAI configuration",
+                "error": str(e)
+            }
+
+@app.get("/openai/models")
+async def get_available_openai_models():
+    """Get available OpenAI models - public endpoint"""
+    with perf_logger.time_operation("openai_get_models"):
+        logger.info("Available OpenAI models requested")
+        
+        try:
+            from config.openai import get_openai_config
+            openai_config = get_openai_config()
+            
+            models = openai_config.get_available_models()
+            default_model = openai_config.default_model
+            
+            return {
+                "status": "success",
+                "available_models": models,
+                "default_model": default_model,
+                "service": "OpenAI"
+            }
+            
+        except Exception as e:
+            logger.error("Failed to get available OpenAI models", exception=e)
+            return {
+                "status": "error",
+                "message": "Failed to retrieve available OpenAI models",
+                "error": str(e)
+            }
+
+@app.get("/openai/connection-test")
+async def test_openai_connection():
+    """Test connection to OpenAI services - public endpoint for setup testing"""
+    with perf_logger.time_operation("openai_connection_test"):
+        logger.info("OpenAI connection test requested")
+        
+        try:
+            from config.openai import get_openai_config
+            openai_config = get_openai_config()
+            connection_result = openai_config.test_connection()
+            
+            if connection_result["status"] == "success":
+                logger.info("OpenAI connection test successful")
+                return {
+                    "status": "success",
+                    "message": "Successfully connected to OpenAI services",
+                    "service": connection_result["service"],
+                    "model": connection_result["model"],
+                    "api_key_prefix": connection_result.get("api_key_prefix")
+                }
+            else:
+                logger.warning("OpenAI connection test failed", error=connection_result["error"])
+                return {
+                    "status": "error",
+                    "message": "Failed to connect to OpenAI services",
+                    "error": connection_result["error"],
+                    "service": connection_result["service"]
+                }
+                
+        except Exception as e:
+            logger.error("OpenAI connection test failed with exception", exception=e)
+            return {
+                "status": "error",
+                "message": "Connection test failed",
+                "error": str(e)
+            }
+
+# Grok Configuration endpoints
+@app.get("/grok/validate")
+async def validate_grok_setup():
+    """Validate Grok configuration - public endpoint for setup validation"""
+    with perf_logger.time_operation("grok_validate"):
+        logger.info("Grok configuration validation requested")
+        
+        try:
+            from config.grok import validate_grok_environment
+            validation_result = validate_grok_environment()
+            
+            is_valid = validation_result.get("valid", False)
+            
+            if is_valid:
+                logger.info("Grok configuration validation successful")
+                return {
+                    "status": "valid",
+                    "message": "Grok is properly configured",
+                    "config": validation_result.get("config", {})
+                }
+            else:
+                logger.warning("Grok configuration validation failed", errors=validation_result.get("errors", []))
+                return {
+                    "status": "invalid", 
+                    "message": "Grok configuration has issues",
+                    "errors": validation_result.get("errors", []),
+                    "warnings": validation_result.get("warnings", [])
+                }
+                
+        except Exception as e:
+            logger.error("Grok validation failed with exception", exception=e)
+            return {
+                "status": "error",
+                "message": "Failed to validate Grok configuration",
+                "error": str(e)
+            }
+
+@app.get("/grok/models")
+async def get_available_grok_models():
+    """Get available Grok models - public endpoint"""
+    with perf_logger.time_operation("grok_get_models"):
+        logger.info("Available Grok models requested")
+        
+        try:
+            from config.grok import get_grok_config
+            grok_config = get_grok_config()
+            
+            models = grok_config.get_available_models()
+            default_model = grok_config.default_model
+            
+            return {
+                "status": "success",
+                "available_models": models,
+                "default_model": default_model,
+                "service": "Grok",
+                "provider": "xAI"
+            }
+            
+        except Exception as e:
+            logger.error("Failed to get available Grok models", exception=e)
+            return {
+                "status": "error",
+                "message": "Failed to retrieve available Grok models",
+                "error": str(e)
+            }
+
+@app.get("/grok/connection-test")
+async def test_grok_connection():
+    """Test connection to Grok services - public endpoint for setup testing"""
+    with perf_logger.time_operation("grok_connection_test"):
+        logger.info("Grok connection test requested")
+        
+        try:
+            from config.grok import get_grok_config
+            grok_config = get_grok_config()
+            connection_result = grok_config.test_connection()
+            
+            if connection_result["status"] == "success":
+                logger.info("Grok connection test successful")
+                return {
+                    "status": "success",
+                    "message": "Successfully connected to Grok services",
+                    "service": connection_result["service"],
+                    "provider": connection_result["provider"],
+                    "model": connection_result["model"],
+                    "base_url": connection_result.get("base_url"),
+                    "api_key_prefix": connection_result.get("api_key_prefix")
+                }
+            else:
+                logger.warning("Grok connection test failed", error=connection_result["error"])
+                return {
+                    "status": "error",
+                    "message": "Failed to connect to Grok services",
+                    "error": connection_result["error"],
+                    "service": connection_result["service"],
+                    "provider": connection_result.get("provider", "xAI")
+                }
+                
+        except Exception as e:
+            logger.error("Grok connection test failed with exception", exception=e)
+            return {
+                "status": "error",
+                "message": "Connection test failed",
+                "error": str(e)
+            }
+
+# Anthropic Configuration endpoints
+@app.get("/anthropic/validate")
+async def validate_anthropic_setup():
+    """Validate Anthropic configuration - public endpoint for setup validation"""
+    with perf_logger.time_operation("anthropic_validate"):
+        logger.info("Anthropic configuration validation requested")
+        
+        try:
+            from config.anthropic import validate_anthropic_environment
+            validation_result = validate_anthropic_environment()
+            
+            is_valid = validation_result.get("valid", False)
+            
+            if is_valid:
+                logger.info("Anthropic configuration validation successful")
+                return {
+                    "status": "valid",
+                    "message": "Anthropic is properly configured",
+                    "config": validation_result.get("config", {})
+                }
+            else:
+                logger.warning("Anthropic configuration validation failed", errors=validation_result.get("errors", []))
+                return {
+                    "status": "invalid", 
+                    "message": "Anthropic configuration has issues",
+                    "errors": validation_result.get("errors", []),
+                    "warnings": validation_result.get("warnings", [])
+                }
+                
+        except Exception as e:
+            logger.error("Anthropic validation failed with exception", exception=e)
+            return {
+                "status": "error",
+                "message": "Failed to validate Anthropic configuration",
+                "error": str(e)
+            }
+
+@app.get("/anthropic/models")
+async def get_available_anthropic_models():
+    """Get available Anthropic models - public endpoint"""
+    with perf_logger.time_operation("anthropic_get_models"):
+        logger.info("Available Anthropic models requested")
+        
+        try:
+            from config.anthropic import get_anthropic_config
+            anthropic_config = get_anthropic_config()
+            
+            models = anthropic_config.get_available_models()
+            default_model = anthropic_config.default_model
+            
+            return {
+                "status": "success",
+                "available_models": models,
+                "default_model": default_model,
+                "service": "Anthropic",
+                "provider": "Anthropic"
+            }
+            
+        except Exception as e:
+            logger.error("Failed to get available Anthropic models", exception=e)
+            return {
+                "status": "error",
+                "message": "Failed to retrieve available Anthropic models",
+                "error": str(e)
+            }
+
+@app.get("/anthropic/connection-test")
+async def test_anthropic_connection():
+    """Test connection to Anthropic services - public endpoint for setup testing"""
+    with perf_logger.time_operation("anthropic_connection_test"):
+        logger.info("Anthropic connection test requested")
+        
+        try:
+            from config.anthropic import get_anthropic_config
+            anthropic_config = get_anthropic_config()
+            connection_result = anthropic_config.test_connection()
+            
+            if connection_result["status"] == "success":
+                logger.info("Anthropic connection test successful")
+                return {
+                    "status": "success",
+                    "message": "Successfully connected to Anthropic services",
+                    "service": connection_result["service"],
+                    "provider": connection_result["provider"],
+                    "model": connection_result["model"],
+                    "api_key_prefix": connection_result.get("api_key_prefix")
+                }
+            else:
+                logger.warning("Anthropic connection test failed", error=connection_result["error"])
+                return {
+                    "status": "error",
+                    "message": "Failed to connect to Anthropic services",
+                    "error": connection_result["error"],
+                    "service": connection_result["service"],
+                    "provider": connection_result.get("provider", "Anthropic")
+                }
+                
+        except Exception as e:
+            logger.error("Anthropic connection test failed with exception", exception=e)
+            return {
+                "status": "error",
+                "message": "Connection test failed",
+                "error": str(e)
+            }
+
+# DeepSeek Configuration endpoints
+@app.get("/deepseek/validate")
+async def validate_deepseek_setup():
+    """Validate DeepSeek configuration - public endpoint for setup validation"""
+    with perf_logger.time_operation("deepseek_validate"):
+        logger.info("DeepSeek configuration validation requested")
+        
+        try:
+            from config.deepseek import validate_deepseek_environment
+            validation_result = validate_deepseek_environment()
+            
+            is_valid = validation_result.get("valid", False)
+            
+            if is_valid:
+                logger.info("DeepSeek configuration validation successful")
+                return {
+                    "status": "valid",
+                    "message": "DeepSeek is properly configured",
+                    "config": validation_result.get("config", {})
+                }
+            else:
+                logger.warning("DeepSeek configuration validation failed", errors=validation_result.get("errors", []))
+                return {
+                    "status": "invalid", 
+                    "message": "DeepSeek configuration has issues",
+                    "errors": validation_result.get("errors", []),
+                    "warnings": validation_result.get("warnings", [])
+                }
+                
+        except Exception as e:
+            logger.error("DeepSeek validation failed with exception", exception=e)
+            return {
+                "status": "error",
+                "message": "Failed to validate DeepSeek configuration",
+                "error": str(e)
+            }
+
+@app.get("/deepseek/models")
+async def get_available_deepseek_models():
+    """Get available DeepSeek models - public endpoint"""
+    with perf_logger.time_operation("deepseek_get_models"):
+        logger.info("Available DeepSeek models requested")
+        
+        try:
+            from config.deepseek import get_deepseek_config
+            deepseek_config = get_deepseek_config()
+            
+            models = deepseek_config.get_available_models()
+            default_model = deepseek_config.default_model
+            
+            return {
+                "status": "success",
+                "available_models": models,
+                "default_model": default_model,
+                "service": "DeepSeek",
+                "provider": "DeepSeek"
+            }
+            
+        except Exception as e:
+            logger.error("Failed to get available DeepSeek models", exception=e)
+            return {
+                "status": "error",
+                "message": "Failed to retrieve available DeepSeek models",
+                "error": str(e)
+            }
+
+@app.get("/deepseek/connection-test")
+async def test_deepseek_connection():
+    """Test connection to DeepSeek services - public endpoint for setup testing"""
+    with perf_logger.time_operation("deepseek_connection_test"):
+        logger.info("DeepSeek connection test requested")
+        
+        try:
+            from config.deepseek import get_deepseek_config
+            deepseek_config = get_deepseek_config()
+            connection_result = deepseek_config.test_connection()
+            
+            if connection_result["status"] == "success":
+                logger.info("DeepSeek connection test successful")
+                return {
+                    "status": "success",
+                    "message": "Successfully connected to DeepSeek services",
+                    "service": connection_result["service"],
+                    "provider": connection_result["provider"],
+                    "model": connection_result["model"],
+                    "base_url": connection_result.get("base_url"),
+                    "api_key_prefix": connection_result.get("api_key_prefix")
+                }
+            else:
+                logger.warning("DeepSeek connection test failed", error=connection_result["error"])
+                return {
+                    "status": "error",
+                    "message": "Failed to connect to DeepSeek services",
+                    "error": connection_result["error"],
+                    "service": connection_result["service"],
+                    "provider": connection_result.get("provider", "DeepSeek")
+                }
+                
+        except Exception as e:
+            logger.error("DeepSeek connection test failed with exception", exception=e)
             return {
                 "status": "error",
                 "message": "Connection test failed",
@@ -414,7 +1243,7 @@ async def get_config_info():
     with perf_logger.time_operation("get_config_info"):
         logger.info("Configuration info requested")
         
-        validate_adk_environment()
+        validate_google_ai_environment()
         discovery_status = get_discovery_status()
         
         return {
@@ -458,58 +1287,198 @@ async def create_job(
 ):
     """Create a new job for processing"""
     with perf_logger.time_operation("create_job", user_id=user["id"]):
-        logger.info("Job creation requested", user_id=user["id"], job_data=request.data)
+        log_agent_access(request.agent_identifier, "job_creation", user_id=user["id"])
         
         try:
-            # Generate job ID
-            import uuid
-            job_id = f"job_{uuid.uuid4().hex[:8]}"
+            # Use centralized validation - job creation requires enabled agents
+            validation_result = validate_agent_exists_and_enabled(request.agent_identifier)
+            agent_metadata = validation_result["metadata"]
             
-            # Create job in database
+            # Validate job data against agent schema requirements
+            schema_validation_result = await _validate_job_data_against_agent_schema(
+                request.agent_identifier, 
+                request.data
+            )
+            
+            if not schema_validation_result["valid"]:
+                log_agent_access(request.agent_identifier, "job_creation", user_id=user["id"], success=False)
+                logger.warning(
+                    "Job data validation failed",
+                    agent_identifier=request.agent_identifier,
+                    user_id=user["id"],
+                    validation_errors=schema_validation_result["errors"]
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": "Job data validation failed",
+                        "agent_identifier": request.agent_identifier,
+                        "validation_errors": schema_validation_result["errors"],
+                        "expected_schema": schema_validation_result.get("schema_info")
+                    }
+                )
+            
+            # Generate job ID as proper UUID
+            import uuid
+            job_id = str(uuid.uuid4())
+            
+            # Create job in database with agent_identifier
             db_ops = get_database_operations()
             job_data = {
                 "id": job_id,
                 "user_id": user["id"],
+                "agent_identifier": request.agent_identifier,
                 "status": "pending",
                 "data": request.data,
                 "priority": request.priority or 0,
                 "tags": request.tags or [],
-                "created_at": datetime.utcnow().isoformat(),
-                "updated_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat()
             }
             
             created_job = await db_ops.create_job(job_data)
             
-            # Submit to job pipeline
+            # Submit job to pipeline for processing
             pipeline = get_job_pipeline()
+            if pipeline and pipeline.is_running:
+                await pipeline.submit_job(
+                    job_id=created_job["id"],
+                    user_id=created_job["user_id"],
+                    agent_name=created_job["agent_identifier"],
+                    job_data=created_job["data"],
+                    priority=created_job.get("priority", 5),
+                    tags=created_job.get("tags", [])
+                )
+                logger.info("Job submitted to pipeline", job_id=job_id, user_id=user["id"], agent_identifier=request.agent_identifier)
+            else:
+                logger.warning("Job created but pipeline not running", job_id=job_id, user_id=user["id"])
             
-            # Extract agent name from job data or determine from job type
-            agent_name = request.data.get('agent', 'text_processing')  # Default agent
-            
-            success = await pipeline.submit_job(
-                job_id=job_id,
-                user_id=user["id"],
-                agent_name=agent_name,
-                job_data=request.data,
-                priority=request.priority or 5,
-                tags=request.tags
-            )
-            
-            if not success:
-                logger.error("Failed to submit job to pipeline", job_id=job_id)
-                raise HTTPException(status_code=500, detail="Failed to queue job for processing")
-            
-            logger.info("Job created and queued successfully", job_id=job_id, user_id=user["id"])
+            log_agent_access(request.agent_identifier, "job_creation", user_id=user["id"])
             
             return JobCreateResponse(
                 success=True,
-                message="Job created and queued for processing",
-                job_id=job_id
+                message="Job created successfully",
+                job_id=job_id,
+                job=created_job
             )
             
+        except AgentError:
+            log_agent_access(request.agent_identifier, "job_creation", user_id=user["id"], success=False)
+            # Re-raise agent-specific errors as they have proper HTTP status codes
+            raise
+        except HTTPException:
+            raise
         except Exception as e:
-            logger.error("Job creation failed", exception=e, user_id=user["id"])
+            log_agent_access(request.agent_identifier, "job_creation", user_id=user["id"], success=False)
+            logger.error("Job creation failed", exception=e, user_id=user["id"], agent_identifier=getattr(request, 'agent_identifier', 'unknown'))
             raise HTTPException(status_code=500, detail=f"Job creation failed: {str(e)}")
+
+async def _validate_job_data_against_agent_schema(agent_identifier: str, job_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Validate job data against agent's defined schema requirements.
+    
+    Returns:
+        dict: Validation result with 'valid', 'errors', 'model_used', and 'schema_info' fields
+    """
+    try:
+        # Get registered agents to access schema information
+        registered_agents = get_registered_agents()
+        agent_instance = registered_agents.get(agent_identifier)
+        
+        if not agent_instance:
+            # Try to get from registry as fallback
+            registry = get_agent_registry()
+            agent_instance = registry.get_agent(agent_identifier)
+        
+        if not agent_instance:
+            # Agent not loaded - allow but log warning
+            logger.warning(f"Agent '{agent_identifier}' not loaded for validation - allowing job creation")
+            return {
+                "valid": True,
+                "warnings": [f"Agent '{agent_identifier}' not loaded - schema validation skipped"],
+                "model_used": None
+            }
+        
+        # Extract job data models from the agent
+        models = agent_instance.get_models() if hasattr(agent_instance, 'get_models') else {}
+        
+        if not models:
+            # No models defined - allow generic data
+            logger.info(f"Agent '{agent_identifier}' has no defined models - allowing generic job data")
+            return {
+                "valid": True,
+                "warnings": [f"Agent '{agent_identifier}' has no defined job data models"],
+                "model_used": None
+            }
+        
+        # Try to find the most appropriate model for validation
+        # Priority: exact match by model name, single model, first available model
+        model_to_use = None
+        model_name = None
+        
+        # If only one model, use it
+        if len(models) == 1:
+            model_name, model_to_use = next(iter(models.items()))
+        else:
+            # Use the first model available (agents should typically define one primary model)
+            model_name, model_to_use = next(iter(models.items()))
+        
+        # Validate the job data against the selected model
+        try:
+            # Create an instance of the model to validate the data
+            validated_data = model_to_use(**job_data)
+            
+            return {
+                "valid": True,
+                "model_used": model_name,
+                "validated_data": validated_data.dict(),
+                "schema_info": {
+                    "model_name": model_name,
+                    "available_models": list(models.keys())
+                }
+            }
+            
+        except Exception as validation_error:
+            # Extract meaningful validation errors
+            errors = []
+            if hasattr(validation_error, 'errors'):
+                # Pydantic validation errors
+                for error in validation_error.errors():
+                    field_path = " -> ".join(str(loc) for loc in error['loc'])
+                    errors.append({
+                        "field": field_path,
+                        "message": error['msg'],
+                        "type": error['type'],
+                        "input": error.get('input')
+                    })
+            else:
+                errors.append({
+                    "field": "general",
+                    "message": str(validation_error),
+                    "type": "validation_error"
+                })
+            
+            # Get schema information for helpful error response
+            schema_info = {
+                "model_name": model_name,
+                "available_models": list(models.keys()),
+                "schema": model_to_use.model_json_schema() if hasattr(model_to_use, 'model_json_schema') else None
+            }
+            
+            return {
+                "valid": False,
+                "errors": errors,
+                "model_used": model_name,
+                "schema_info": schema_info
+            }
+        
+    except Exception as e:
+        logger.error(f"Error during job data validation for agent '{agent_identifier}'", exception=e)
+        return {
+            "valid": True,  # Allow on system errors
+            "warnings": [f"Validation system error: {str(e)}"],
+            "model_used": None
+        }
 
 @app.get("/jobs", response_model=JobListResponse)
 async def list_jobs(
@@ -530,6 +1499,7 @@ async def list_jobs(
                 job_responses.append(JobResponse(
                     id=job["id"],
                     status=job["status"],
+                    agent_identifier=job.get("agent_identifier", "unknown"),
                     data=job["data"],
                     result=job.get("result"),
                     error_message=job.get("error_message"),
@@ -555,33 +1525,24 @@ async def get_job(
     job_id: str,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Get details of a specific job"""
-    with perf_logger.time_operation("get_job", user_id=user["id"], job_id=job_id):
-        logger.info("Job details requested", job_id=job_id, user_id=user["id"])
+    """Get detailed information about a specific job"""
+    with perf_logger.time_operation("get_job", user_id=user["id"]):
+        logger.info("Job detail requested", job_id=job_id, user_id=user["id"])
         
         try:
             db_ops = get_database_operations()
             job = await db_ops.get_job(job_id, user_id=user["id"])
             
             if not job:
-                raise HTTPException(status_code=404, detail="Job not found")
+                logger.warning("Job not found or access denied", job_id=job_id, user_id=user["id"])
+                raise HTTPException(status_code=404, detail="Job not found or access denied")
             
-            job_response = JobResponse(
-                id=job["id"],
-                status=job["status"],
-                data=job["data"],
-                result=job.get("result"),
-                error_message=job.get("error_message"),
-                created_at=job["created_at"],
-                updated_at=job["updated_at"]
-            )
-            
-            logger.info("Job details retrieved", job_id=job_id, user_id=user["id"])
+            logger.info("Job detail retrieved", job_id=job_id, user_id=user["id"], status=job.get("status"))
             
             return JobDetailResponse(
                 success=True,
-                message="Job details retrieved successfully",
-                job=job_response
+                message="Job retrieved successfully",
+                job=job
             )
             
         except HTTPException:
@@ -620,6 +1581,395 @@ async def delete_job(
             logger.error("Job deletion failed", exception=e, job_id=job_id, user_id=user["id"])
             raise HTTPException(status_code=500, detail=f"Failed to delete job: {str(e)}")
 
+@app.get("/jobs/{job_id}/status")
+async def get_job_status(
+    job_id: str,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get status of a specific job"""
+    with perf_logger.time_operation("get_job_status", user_id=user["id"], job_id=job_id):
+        logger.info("Job status requested", job_id=job_id, user_id=user["id"])
+        
+        try:
+            db_ops = get_database_operations()
+            job = await db_ops.get_job(job_id, user_id=user["id"])
+            
+            if not job:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            return {
+                "success": True,
+                "message": "Job status retrieved",
+                "data": {
+                    "status": job["status"]
+                }
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error("Job status retrieval failed", exception=e, job_id=job_id, user_id=user["id"])
+            raise HTTPException(status_code=500, detail=f"Failed to get job status: {str(e)}")
+
+@app.post("/jobs/batch/status")
+async def get_batch_job_status(
+    request: Dict[str, List[str]],
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get status of multiple jobs in batch"""
+    with perf_logger.time_operation("get_batch_job_status", user_id=user["id"]):
+        job_ids = request.get("job_ids", [])
+        logger.info("Batch job status requested", job_ids=job_ids, user_id=user["id"])
+        
+        try:
+            db_ops = get_database_operations()
+            batch_status = {}
+            
+            for job_id in job_ids:
+                try:
+                    job = await db_ops.get_job(job_id, user_id=user["id"])
+                    if job:
+                        batch_status[job_id] = {
+                            "status": job["status"],
+                            "updated_at": job["updated_at"]
+                        }
+                except Exception:
+                    # Job not found or error - skip it
+                    continue
+            
+            return {
+                "success": True,
+                "message": "Batch job status retrieved",
+                "data": batch_status
+            }
+            
+        except Exception as e:
+            logger.error("Batch job status retrieval failed", exception=e, user_id=user["id"])
+            raise HTTPException(status_code=500, detail=f"Failed to get batch job status: {str(e)}")
+
+@app.get("/jobs/minimal")
+async def get_jobs_minimal(
+    limit: int = 50,
+    offset: int = 0,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get minimal job data for polling (lighter weight)"""
+    with perf_logger.time_operation("get_jobs_minimal", user_id=user["id"]):
+        logger.info("Minimal job list requested", user_id=user["id"], limit=limit, offset=offset)
+        
+        try:
+            db_ops = get_database_operations()
+            jobs = await db_ops.get_user_jobs(user["id"], limit=limit, offset=offset)
+            
+            minimal_jobs = []
+            for job in jobs:
+                minimal_jobs.append({
+                    "id": job["id"],
+                    "status": job["status"],
+                    "updated_at": job["updated_at"]
+                })
+            
+            return {
+                "success": True,
+                "message": "Minimal jobs retrieved",
+                "data": minimal_jobs
+            }
+            
+        except Exception as e:
+            logger.error("Minimal job list retrieval failed", exception=e, user_id=user["id"])
+            raise HTTPException(status_code=500, detail=f"Failed to retrieve minimal jobs: {str(e)}")
+
+@app.post("/jobs/{job_id}/retry")
+async def retry_job(
+    job_id: str,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Retry a failed job"""
+    with perf_logger.time_operation("retry_job", user_id=user["id"], job_id=job_id):
+        logger.info("Job retry requested", job_id=job_id, user_id=user["id"])
+        
+        try:
+            db_ops = get_database_operations()
+            job = await db_ops.get_job(job_id, user_id=user["id"])
+            
+            if not job:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            if job["status"] not in ["failed", "cancelled"]:
+                raise HTTPException(status_code=400, detail="Only failed or cancelled jobs can be retried")
+            
+            # Get agent_identifier from the job data
+            agent_identifier = job.get("agent_identifier", "unknown")
+            log_agent_access(agent_identifier, "job_retry", user_id=user["id"])
+            
+            # Use centralized validation - job retry requires enabled agents
+            validation_result = validate_agent_exists_and_enabled(agent_identifier)
+            
+            # Validate existing job data against current agent schema requirements
+            schema_validation_result = await _validate_job_data_against_agent_schema(
+                agent_identifier, 
+                job["data"]
+            )
+            
+            if not schema_validation_result["valid"]:
+                log_agent_access(agent_identifier, "job_retry", user_id=user["id"], success=False)
+                logger.warning(
+                    "Job retry failed - existing data no longer valid",
+                    job_id=job_id,
+                    agent_identifier=agent_identifier,
+                    user_id=user["id"],
+                    validation_errors=schema_validation_result["errors"]
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": "Cannot retry job - existing job data no longer meets agent requirements",
+                        "job_id": job_id,
+                        "agent_identifier": agent_identifier,
+                        "validation_errors": schema_validation_result["errors"],
+                        "expected_schema": schema_validation_result.get("schema_info"),
+                        "suggestion": "The agent schema may have changed since this job was created. Please create a new job with updated data."
+                    }
+                )
+            
+            # Update job status to pending and resubmit
+            await db_ops.update_job_status(job_id, "pending")
+            
+            # Resubmit to pipeline using agent_identifier
+            pipeline = get_job_pipeline()
+            
+            success = await pipeline.submit_job(
+                job_id=job_id,
+                user_id=user["id"],
+                agent_name=agent_identifier,  # Use agent_identifier directly
+                job_data=job["data"],
+                priority=job.get("priority", 5),
+                tags=job.get("tags", [])
+            )
+            
+            if not success:
+                raise HTTPException(status_code=500, detail="Failed to requeue job for processing")
+            
+            # Get updated job
+            updated_job = await db_ops.get_job(job_id, user_id=user["id"])
+            
+            job_response = JobResponse(
+                id=updated_job["id"],
+                status=updated_job["status"],
+                agent_identifier=updated_job.get("agent_identifier", "unknown"),
+                data=updated_job["data"],
+                result=updated_job.get("result"),
+                error_message=updated_job.get("error_message"),
+                created_at=updated_job["created_at"],
+                updated_at=updated_job["updated_at"]
+            )
+            
+            logger.info("Job retried successfully", 
+                       job_id=job_id, 
+                       user_id=user["id"], 
+                       agent_identifier=agent_identifier,
+                       validation_model=schema_validation_result.get("model_used"))
+            
+            return {
+                "success": True,
+                "message": "Job retried successfully",
+                "data": job_response
+            }
+            
+        except AgentError:
+            if 'agent_identifier' in locals():
+                log_agent_access(agent_identifier, "job_retry", user_id=user["id"], success=False)
+            # Re-raise agent-specific errors as they have proper HTTP status codes
+            raise
+        except HTTPException:
+            raise
+        except Exception as e:
+            if 'agent_identifier' in locals():
+                log_agent_access(agent_identifier, "job_retry", user_id=user["id"], success=False)
+            logger.error("Job retry failed", exception=e, job_id=job_id, user_id=user["id"])
+            raise HTTPException(status_code=500, detail=f"Failed to retry job: {str(e)}")
+
+@app.post("/jobs/{job_id}/rerun")
+async def rerun_job(
+    job_id: str,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Rerun any job by creating a new job with the same configuration"""
+    with perf_logger.time_operation("rerun_job", user_id=user["id"], job_id=job_id):
+        logger.info("Job rerun requested", job_id=job_id, user_id=user["id"])
+        
+        try:
+            db_ops = get_database_operations()
+            original_job = await db_ops.get_job(job_id, user_id=user["id"])
+            
+            if not original_job:
+                raise HTTPException(status_code=404, detail="Original job not found")
+            
+            # Get agent_identifier from the original job
+            agent_identifier = original_job.get("agent_identifier", "unknown")
+            log_agent_access(agent_identifier, "job_rerun", user_id=user["id"])
+            
+            # Use centralized validation - job rerun requires enabled agents
+            validation_result = validate_agent_exists_and_enabled(agent_identifier)
+            
+            # Validate original job data against current agent schema requirements
+            schema_validation_result = await _validate_job_data_against_agent_schema(
+                agent_identifier, 
+                original_job["data"]
+            )
+            
+            if not schema_validation_result["valid"]:
+                log_agent_access(agent_identifier, "job_rerun", user_id=user["id"], success=False)
+                logger.warning(
+                    "Job rerun failed - original data no longer valid",
+                    job_id=job_id,
+                    agent_identifier=agent_identifier,
+                    user_id=user["id"],
+                    validation_errors=schema_validation_result["errors"]
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": "Cannot rerun job - original job data no longer meets agent requirements",
+                        "original_job_id": job_id,
+                        "agent_identifier": agent_identifier,
+                        "validation_errors": schema_validation_result["errors"],
+                        "expected_schema": schema_validation_result.get("schema_info"),
+                        "suggestion": "The agent schema may have changed since this job was created. Please create a new job with updated data."
+                    }
+                )
+            
+            # Generate new job ID
+            import uuid
+            new_job_id = str(uuid.uuid4())
+            
+            # Create new job data based on original job
+            new_job_data = {
+                "id": new_job_id,
+                "user_id": user["id"],
+                "agent_identifier": agent_identifier,
+                "status": "pending",
+                "data": original_job["data"],  # Copy original job data
+                "priority": original_job.get("priority", 0),
+                "tags": original_job.get("tags", []),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+            
+            # Create the new job in database
+            created_job = await db_ops.create_job(new_job_data)
+            
+            # Submit new job to pipeline
+            pipeline = get_job_pipeline()
+            if pipeline and pipeline.is_running:
+                success = await pipeline.submit_job(
+                    job_id=new_job_id,
+                    user_id=user["id"],
+                    agent_name=agent_identifier,
+                    job_data=original_job["data"],
+                    priority=original_job.get("priority", 5),
+                    tags=original_job.get("tags", [])
+                )
+                
+                if not success:
+                    # Clean up the created job if pipeline submission fails
+                    await db_ops.delete_job(new_job_id, user_id=user["id"])
+                    raise HTTPException(status_code=500, detail="Failed to submit rerun job to processing pipeline")
+                
+                logger.info("Rerun job submitted to pipeline", 
+                           new_job_id=new_job_id, 
+                           original_job_id=job_id,
+                           user_id=user["id"], 
+                           agent_identifier=agent_identifier)
+            else:
+                logger.warning("Rerun job created but pipeline not running", 
+                              new_job_id=new_job_id, 
+                              original_job_id=job_id,
+                              user_id=user["id"])
+            
+            # Create response object
+            job_response = JobResponse(
+                id=created_job["id"],
+                status=created_job["status"],
+                agent_identifier=created_job.get("agent_identifier", "unknown"),
+                data=created_job["data"],
+                result=created_job.get("result"),
+                error_message=created_job.get("error_message"),
+                created_at=created_job["created_at"],
+                updated_at=created_job["updated_at"]
+            )
+            
+            logger.info("Job rerun successful", 
+                       new_job_id=new_job_id,
+                       original_job_id=job_id,
+                       user_id=user["id"], 
+                       agent_identifier=agent_identifier,
+                       original_status=original_job["status"])
+            
+            return {
+                "success": True,
+                "message": "Job rerun successful - new job created",
+                "original_job_id": job_id,
+                "new_job_id": new_job_id,
+                "original_job_status": original_job["status"],
+                "data": job_response
+            }
+            
+        except AgentError:
+            if 'agent_identifier' in locals():
+                log_agent_access(agent_identifier, "job_rerun", user_id=user["id"], success=False)
+            # Re-raise agent-specific errors as they have proper HTTP status codes
+            raise
+        except HTTPException:
+            raise
+        except Exception as e:
+            if 'agent_identifier' in locals():
+                log_agent_access(agent_identifier, "job_rerun", user_id=user["id"], success=False)
+            logger.error("Job rerun failed", exception=e, job_id=job_id, user_id=user["id"])
+            raise HTTPException(status_code=500, detail=f"Failed to rerun job: {str(e)}")
+
+@app.get("/jobs/{job_id}/logs")
+async def get_job_logs(
+    job_id: str,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get logs for a specific job"""
+    with perf_logger.time_operation("get_job_logs", user_id=user["id"], job_id=job_id):
+        logger.info("Job logs requested", job_id=job_id, user_id=user["id"])
+        
+        try:
+            db_ops = get_database_operations()
+            job = await db_ops.get_job(job_id, user_id=user["id"])
+            
+            if not job:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            # For now, return basic status information as logs
+            # In a full implementation, you'd have actual log storage
+            logs = [
+                f"Job {job_id} created at {job['created_at']}",
+                f"Current status: {job['status']}",
+                f"Last updated: {job['updated_at']}"
+            ]
+            
+            if job.get("error_message"):
+                logs.append(f"Error: {job['error_message']}")
+            
+            if job.get("result"):
+                logs.append(f"Result available: {len(str(job['result']))} characters")
+            
+            return {
+                "success": True,
+                "message": "Job logs retrieved",
+                "data": logs
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error("Job logs retrieval failed", exception=e, job_id=job_id, user_id=user["id"])
+            raise HTTPException(status_code=500, detail=f"Failed to retrieve job logs: {str(e)}")
+
 @app.get("/pipeline/status")
 async def get_pipeline_status(user: Dict[str, Any] = Depends(get_current_user)):
     """Get job pipeline status and metrics"""
@@ -634,7 +1984,7 @@ async def get_pipeline_status(user: Dict[str, Any] = Depends(get_current_user)):
                 "success": True,
                 "message": "Pipeline status retrieved",
                 "status": status,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
@@ -655,7 +2005,7 @@ async def get_pipeline_metrics(user: Dict[str, Any] = Depends(get_current_user))
                 "success": True,
                 "message": "Pipeline metrics retrieved",
                 "status": status,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
@@ -883,9 +2233,100 @@ async def get_static_file_info_endpoint(user: Dict[str, Any] = Depends(get_curre
             logger.error("Static file info retrieval failed", exception=e, user_id=user["id"])
             raise HTTPException(status_code=500, detail=f"Failed to retrieve static file info: {str(e)}")
 
+@app.post("/jobs/validate")
+async def validate_job_data(
+    request: JobCreateRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Validate job data against agent schema without creating a job"""
+    with perf_logger.time_operation("validate_job_data", user_id=user["id"]):
+        log_agent_access(request.agent_identifier, "job_validation", user_id=user["id"])
+        
+        try:
+            # Use centralized validation - job validation requires enabled agents
+            validation_result = validate_agent_exists_and_enabled(request.agent_identifier)
+            
+            # Validate job data against agent schema requirements
+            schema_validation_result = await _validate_job_data_against_agent_schema(
+                request.agent_identifier, 
+                request.data
+            )
+            
+            logger.info("Job data validation completed", 
+                       user_id=user["id"], 
+                       agent_identifier=request.agent_identifier,
+                       valid=schema_validation_result["valid"],
+                       model_used=schema_validation_result.get("model_used"))
+            
+            return {
+                "success": True,
+                "message": "Job data validation completed",
+                "validation_result": {
+                    "valid": schema_validation_result["valid"],
+                    "agent_identifier": request.agent_identifier,
+                    "model_used": schema_validation_result.get("model_used"),
+                    "errors": schema_validation_result.get("errors", []),
+                    "warnings": schema_validation_result.get("warnings", []),
+                    "schema_info": schema_validation_result.get("schema_info"),
+                    "validated_data": schema_validation_result.get("validated_data")
+                }
+            }
+            
+        except AgentError:
+            log_agent_access(request.agent_identifier, "job_validation", user_id=user["id"], success=False)
+            # Re-raise agent-specific errors as they have proper HTTP status codes
+            raise
+        except HTTPException:
+            raise
+        except Exception as e:
+            log_agent_access(request.agent_identifier, "job_validation", user_id=user["id"], success=False)
+            logger.error("Job data validation failed", exception=e, user_id=user["id"], agent_identifier=getattr(request, 'agent_identifier', 'unknown'))
+            raise HTTPException(status_code=500, detail=f"Job data validation failed: {str(e)}")
+
 # Set up static file serving after all API routes are defined
 # This must be done before the global exception handler
 setup_static_file_serving(app)
+
+# Custom exception handlers
+@app.exception_handler(AgentError)
+async def agent_error_handler(request, exc: AgentError):
+    """Custom handler for agent-specific errors with consistent formatting"""
+    error_type = type(exc).__name__
+    
+    # Log the agent error with context
+    logger.warning(
+        f"Agent error: {error_type}",
+        agent_identifier=getattr(exc, 'agent_identifier', 'unknown'),
+        lifecycle_state=getattr(exc, 'lifecycle_state', None),
+        path=request.url.path,
+        method=request.method,
+        status_code=exc.status_code
+    )
+    
+    # Create consistent error response format
+    error_response = {
+        "error": error_type,
+        "message": str(exc.detail),
+        "status_code": exc.status_code,
+        "agent_identifier": getattr(exc, 'agent_identifier', 'unknown')
+    }
+    
+    # Add lifecycle state for disabled agent errors
+    if hasattr(exc, 'lifecycle_state') and exc.lifecycle_state:
+        error_response["lifecycle_state"] = exc.lifecycle_state
+    
+    # Add helpful context based on error type
+    if isinstance(exc, AgentNotFoundError):
+        error_response["suggestion"] = "Check available agents using GET /agents endpoint"
+    elif isinstance(exc, AgentDisabledError):
+        error_response["suggestion"] = "Agent is not enabled or has load errors. Check agent status or contact administrator."
+    elif isinstance(exc, AgentNotLoadedError):
+        error_response["suggestion"] = "Agent exists but is not currently loaded. Try again later or contact administrator."
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_response
+    )
 
 # Global exception handler
 @app.exception_handler(Exception)
@@ -905,17 +2346,130 @@ async def global_exception_handler(request, exc):
         )
     
     if settings.is_development():
-        return {
+        content = {
             "error": "Internal server error",
             "detail": str(exc),
             "type": type(exc).__name__,
             "path": request.url.path
         }
     else:
-        return {
+        content = {
             "error": "Internal server error",
             "message": "An unexpected error occurred"
         }
+    
+    return JSONResponse(
+        status_code=500,
+        content=content
+    )
+
+# Meta Llama Configuration endpoints
+@app.get("/llama/validate")
+async def validate_llama_setup():
+    """Validate Meta Llama configuration - public endpoint for setup validation"""
+    with perf_logger.time_operation("llama_validate"):
+        logger.info("Meta Llama configuration validation requested")
+        
+        try:
+            from config.llama import validate_llama_environment
+            validation_result = validate_llama_environment()
+            
+            is_valid = validation_result.get("valid", False)
+            
+            if is_valid:
+                logger.info("Meta Llama configuration validation successful")
+                return {
+                    "status": "valid",
+                    "message": "Meta Llama is properly configured",
+                    "config": validation_result.get("config", {})
+                }
+            else:
+                logger.warning("Meta Llama configuration validation failed", errors=validation_result.get("errors", []))
+                return {
+                    "status": "invalid", 
+                    "message": "Meta Llama configuration has issues",
+                    "errors": validation_result.get("errors", []),
+                    "warnings": validation_result.get("warnings", [])
+                }
+                
+        except Exception as e:
+            logger.error("Meta Llama validation failed with exception", exception=e)
+            return {
+                "status": "error",
+                "message": "Failed to validate Meta Llama configuration",
+                "error": str(e)
+            }
+
+@app.get("/llama/models")
+async def get_available_llama_models():
+    """Get available Meta Llama models - public endpoint"""
+    with perf_logger.time_operation("llama_get_models"):
+        logger.info("Available Meta Llama models requested")
+        
+        try:
+            from config.llama import get_llama_config
+            llama_config = get_llama_config()
+            
+            models = llama_config.get_available_models()
+            default_model = llama_config.default_model
+            
+            return {
+                "status": "success",
+                "available_models": models,
+                "default_model": default_model,
+                "service": "Meta Llama",
+                "provider": "Meta",
+                "api_provider": llama_config.api_provider
+            }
+            
+        except Exception as e:
+            logger.error("Failed to get available Meta Llama models", exception=e)
+            return {
+                "status": "error",
+                "message": "Failed to retrieve available Meta Llama models",
+                "error": str(e)
+            }
+
+@app.get("/llama/connection-test")
+async def test_llama_connection():
+    """Test connection to Meta Llama services - public endpoint for setup testing"""
+    with perf_logger.time_operation("llama_connection_test"):
+        logger.info("Meta Llama connection test requested")
+        
+        try:
+            from config.llama import get_llama_config
+            llama_config = get_llama_config()
+            connection_result = llama_config.test_connection()
+            
+            if connection_result["status"] == "success":
+                logger.info("Meta Llama connection test successful")
+                return {
+                    "status": "success",
+                    "message": "Successfully connected to Meta Llama services",
+                    "service": connection_result["service"],
+                    "provider": connection_result["provider"],
+                    "model": connection_result["model"],
+                    "base_url": connection_result.get("base_url"),
+                    "api_provider": connection_result.get("api_provider"),
+                    "api_key_prefix": connection_result.get("api_key_prefix")
+                }
+            else:
+                logger.warning("Meta Llama connection test failed", error=connection_result["error"])
+                return {
+                    "status": "error",
+                    "message": "Failed to connect to Meta Llama services",
+                    "error": connection_result["error"],
+                    "service": connection_result["service"],
+                    "provider": connection_result.get("provider", "Meta")
+                }
+                
+        except Exception as e:
+            logger.error("Meta Llama connection test failed with exception", exception=e)
+            return {
+                "status": "error",
+                "message": "Connection test failed",
+                "error": str(e)
+            }
 
 if __name__ == "__main__":
     uvicorn.run(

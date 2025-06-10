@@ -56,13 +56,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dmautz1/ai-agent-template.git"
+    "url": "git+https://github.com/dmautz1/ai-agent-platform.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/dmautz1/ai-agent-template/issues"
+    "url": "https://github.com/dmautz1/ai-agent-platform/issues"
   },
-  "homepage": "https://github.com/dmautz1/ai-agent-template#readme"
+  "homepage": "https://github.com/dmautz1/ai-agent-platform#readme"
 }

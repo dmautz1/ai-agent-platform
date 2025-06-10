@@ -141,7 +141,7 @@ export const EmptyJobs: React.FC<EmptyJobsProps> = ({
     <EmptyState
       icon={<Zap className="h-12 w-12 text-muted-foreground/50" />}
       title="No jobs found"
-      description="Get started by creating your first AI agent job. You can process text, summarize content, or scrape web data."
+      description="Get started by creating your first AI agent job. You can process text, generate content, or integrate with external services."
       action={onCreateJob ? {
         label: 'Create First Job',
         onClick: onCreateJob,

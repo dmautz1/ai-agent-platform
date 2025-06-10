@@ -333,10 +333,10 @@ test.describe('Cross-Browser Compatibility Tests', () => {
         if (await createButton.count() > 0) {
           await createButton.first().click();
           
-          // Select web scraping or other agent that might use file uploads
-          const agentSelect = page.locator('select[name="agent_type"]');
+          // Select simple_prompt agent using the generic agent selector
+          const agentSelect = page.locator('select[name="agent_identifier"], [data-testid="agent-selector"]');
           if (await agentSelect.count() > 0) {
-            await agentSelect.selectOption('web_scraping');
+            await agentSelect.selectOption('simple_prompt');
           }
           
           // Check if file input is rendered and functional

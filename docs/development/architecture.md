@@ -140,7 +140,7 @@ Agent File Created → Auto-Discovery → Model Registration → Endpoint Regist
 jobs (
   id UUID PRIMARY KEY,
   user_id UUID REFERENCES auth.users,
-  agent_type TEXT NOT NULL,
+  agent_identifier TEXT NOT NULL,
   status job_status NOT NULL,
   job_data JSONB,
   result JSONB,

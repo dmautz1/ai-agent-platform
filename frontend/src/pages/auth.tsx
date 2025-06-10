@@ -1,6 +1,7 @@
 import React from 'react';
 import { SignInForm } from '../components/SignInForm';
 import { useAuth } from '../contexts/AuthContext';
+import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import { Badge } from '@/components/ui/badge';
 
 export const AuthPage: React.FC = () => {
@@ -20,9 +21,14 @@ export const AuthPage: React.FC = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
+      {/* Theme switcher in top-right corner */}
+      <div className="absolute top-4 right-4">
+        <ThemeSwitcher />
+      </div>
+      
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight">AI Agent Template</h1>
+          <h1 className="text-3xl font-bold tracking-tight">AI Agent Platform</h1>
           <p className="text-muted-foreground">Sign in to manage your AI agents and jobs</p>
           <div className="inline-flex items-center gap-2 mt-4">
             <Badge variant="secondary" className="text-xs">

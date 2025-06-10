@@ -1,9 +1,9 @@
+import { screen } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { renderWithProviders, mockJobs, mockJob } from '../utils'
-import JobList from '../../components/JobList'
-import type { Job } from '../../lib/types'
+import { JobList } from '../../components/JobList'
+import type { Job } from '../../lib/models'
 
 // Mock the API module
 vi.mock('../../lib/api', () => ({
@@ -63,10 +63,10 @@ describe('JobList Component', () => {
     it('should render job data correctly', () => {
       renderWithProviders(<JobList {...defaultProps} />)
       
-      // Check that agent types are displayed (uppercase with spaces)
-      expect(screen.getByText('TEXT PROCESSING')).toBeInTheDocument()
-      expect(screen.getByText('SUMMARIZATION')).toBeInTheDocument()
-      expect(screen.getByText('WEB SCRAPING')).toBeInTheDocument()
+      // Check that agent identifiers are displayed (uppercase with spaces)
+      expect(screen.getByText('EXAMPLE RESEARCH AGENT')).toBeInTheDocument()
+      expect(screen.getByText('CONTENT SUMMARIZER')).toBeInTheDocument()
+      expect(screen.getByText('WEB DATA EXTRACTOR')).toBeInTheDocument()
       
       // Check status badges
       expect(screen.getByText('Completed')).toBeInTheDocument()
@@ -126,7 +126,7 @@ describe('JobList Component', () => {
       // Check table headers
       expect(screen.getByText('ID')).toBeInTheDocument()
       expect(screen.getByText('Title')).toBeInTheDocument()
-      expect(screen.getByText('Agent Type')).toBeInTheDocument()
+      expect(screen.getByText('Agent Identifier')).toBeInTheDocument()
       expect(screen.getByText('Status')).toBeInTheDocument()
       expect(screen.getByText('Created')).toBeInTheDocument()
       expect(screen.getByText('Updated')).toBeInTheDocument()
@@ -156,9 +156,9 @@ describe('JobList Component', () => {
       renderWithProviders(<JobList {...defaultProps} />)
       
       // Job titles should be visible (either in table or cards)
-      expect(screen.getByText('Test Job')).toBeInTheDocument()
-      expect(screen.getByText('Summarization Job')).toBeInTheDocument()
-      expect(screen.getByText('Web Scraping Job')).toBeInTheDocument()
+      expect(screen.getByText('Test Research Job')).toBeInTheDocument()
+      expect(screen.getByText('Document Summary Job')).toBeInTheDocument()
+      expect(screen.getByText('Web Data Extraction Job')).toBeInTheDocument()
     })
   })
 
@@ -194,30 +194,30 @@ describe('JobList Component', () => {
       renderWithProviders(<JobList {...defaultProps} jobs={jobWithInvalidDate} />)
       
       // Should not throw an error and should render something
-      expect(screen.getByText('TEXT PROCESSING')).toBeInTheDocument()
+      expect(screen.getByText('EXAMPLE RESEARCH AGENT')).toBeInTheDocument()
     })
   })
 
   describe('Job Data Extraction', () => {
-    it('should extract agent type from job data correctly', () => {
+    it('should extract agent identifier from job data correctly', () => {
       renderWithProviders(<JobList {...defaultProps} />)
       
-      expect(screen.getByText('TEXT PROCESSING')).toBeInTheDocument()
+      expect(screen.getByText('EXAMPLE RESEARCH AGENT')).toBeInTheDocument()
     })
 
-    it('should show UNKNOWN for missing agent type', () => {
-      const jobWithoutAgentType: Job[] = [
+    it('should show UNKNOWN for missing agent identifier', () => {
+      const jobWithoutAgentIdentifier: Job[] = [
         {
           ...mockJob,
           data: {
-            agent_type: undefined as any,
+            agent_identifier: undefined as unknown as string,
             title: 'Test',
-            input_text: 'test',
+            query: 'test query',
           },
         },
       ]
       
-      renderWithProviders(<JobList {...defaultProps} jobs={jobWithoutAgentType} />)
+      renderWithProviders(<JobList {...defaultProps} jobs={jobWithoutAgentIdentifier} />)
       
       expect(screen.getByText('UNKNOWN')).toBeInTheDocument()
     })
@@ -225,7 +225,7 @@ describe('JobList Component', () => {
     it('should extract job title from data correctly', () => {
       renderWithProviders(<JobList {...defaultProps} />)
       
-      expect(screen.getByText('Test Job')).toBeInTheDocument()
+      expect(screen.getByText('Test Research Job')).toBeInTheDocument()
     })
 
     it('should use fallback title when title is missing', () => {
@@ -233,9 +233,9 @@ describe('JobList Component', () => {
         {
           ...mockJob,
           data: {
-            agent_type: 'text_processing' as const,
-            title: undefined as any,
-            input_text: 'test',
+            agent_identifier: 'example_research_agent',
+            title: undefined as unknown as string,
+            query: 'test query',
           },
         },
       ]
@@ -261,9 +261,9 @@ describe('JobList Component', () => {
         {
           ...mockJob,
           data: {
-            agent_type: undefined as any,
+            agent_identifier: undefined as unknown as string,
             title: 'Test',
-            input_text: 'test',
+            query: 'test query',
           },
         },
       ]

@@ -30,6 +30,7 @@ _supabase_client: Optional[Client] = None
 def get_supabase_client() -> Client:
     """
     Get or create Supabase client instance with connection logging.
+    Uses the service role key for backend operations to bypass RLS.
     
     Returns:
         Supabase client instance
@@ -45,12 +46,20 @@ def get_supabase_client() -> Client:
             
             logger.info("Initializing Supabase client connection")
             
+            # Use service role key for backend operations to bypass RLS
+            # This allows the backend to create jobs on behalf of authenticated users
+            supabase_key = settings.supabase_service_key or settings.supabase_key
+            
+            if not settings.supabase_service_key:
+                logger.warning("SUPABASE_SERVICE_KEY not set, using anon key - RLS policies will apply")
+            
             _supabase_client = create_client(
                 settings.supabase_url,
-                settings.supabase_key
+                supabase_key
             )
             
-            logger.info("Supabase client initialized successfully")
+            using_service_key = bool(settings.supabase_service_key)
+            logger.info(f"Supabase client initialized successfully (using_service_key: {using_service_key})")
             
         except Exception as e:
             logger.error("Failed to initialize Supabase client", exception=e)
@@ -59,7 +68,7 @@ def get_supabase_client() -> Client:
     
     return _supabase_client
 
-class DatabaseOperations:
+class DatabaseClient:
     """Database operations with comprehensive logging and monitoring"""
     
     def __init__(self):
@@ -81,7 +90,7 @@ class DatabaseOperations:
         start_time = time.time()
         
         try:
-            logger.info("Creating new job", job_type=job_data.get("type"), user_id=job_data.get("user_id"))
+            logger.info("Creating new job", agent_identifier=job_data.get("agent_identifier"), user_id=job_data.get("user_id"))
             
             with perf_logger.time_operation("db_create_job"):
                 response = self.client.table("jobs").insert(job_data).execute()
@@ -187,7 +196,7 @@ class DatabaseOperations:
             db_logger.log_query("SELECT", "jobs", duration, error=str(e))
             raise
     
-    async def update_job_status(self, job_id: str, status: str, result: Optional[Dict[str, Any]] = None, error_message: Optional[str] = None) -> Dict[str, Any]:
+    async def update_job_status(self, job_id: str, status: str, result: Optional[str] = None, error_message: Optional[str] = None, result_format: Optional[str] = None) -> Dict[str, Any]:
         """
         Update job status and optionally set result or error.
         
@@ -196,6 +205,7 @@ class DatabaseOperations:
             status: New status for the job
             result: Optional result data for completed jobs
             error_message: Optional error message for failed jobs
+            result_format: Optional format of the result data
             
         Returns:
             Updated job data
@@ -217,6 +227,9 @@ class DatabaseOperations:
             if error_message is not None:
                 update_data["error_message"] = error_message
                 update_data["failed_at"] = "now()"
+            
+            if result_format is not None:
+                update_data["result_format"] = result_format
             
             with perf_logger.time_operation("db_update_job_status", job_id=job_id):
                 response = (
@@ -241,6 +254,52 @@ class DatabaseOperations:
         except Exception as e:
             duration = time.time() - start_time
             logger.error("Job status update failed", exception=e, job_id=job_id, status=status)
+            db_logger.log_query("UPDATE", "jobs", duration, error=str(e))
+            raise
+    
+    async def update_job(self, job_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update job with arbitrary data.
+        
+        Args:
+            job_id: ID of the job to update
+            update_data: Dictionary of fields to update
+            
+        Returns:
+            Updated job data
+        """
+        start_time = time.time()
+        
+        try:
+            logger.info("Updating job", job_id=job_id, fields=list(update_data.keys()))
+            
+            # Ensure updated_at is set
+            if "updated_at" not in update_data:
+                update_data["updated_at"] = "now()"
+            
+            with perf_logger.time_operation("db_update_job", job_id=job_id):
+                response = (
+                    self.client.table("jobs")
+                    .update(update_data)
+                    .eq("id", job_id)
+                    .execute()
+                )
+            
+            duration = time.time() - start_time
+            
+            if response.data:
+                updated_job = response.data[0]
+                logger.info("Job updated successfully", job_id=job_id)
+                db_logger.log_query("UPDATE", "jobs", duration, rows_affected=1)
+                return updated_job
+            else:
+                error_msg = f"Job {job_id} not found for update"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+                
+        except Exception as e:
+            duration = time.time() - start_time
+            logger.error("Job update failed", exception=e, job_id=job_id)
             db_logger.log_query("UPDATE", "jobs", duration, error=str(e))
             raise
     
@@ -381,18 +440,18 @@ class DatabaseOperations:
             raise
 
 # Global database operations instance
-_db_operations: Optional[DatabaseOperations] = None
+_db_operations: Optional[DatabaseClient] = None
 
-def get_database_operations() -> DatabaseOperations:
+def get_database_operations() -> DatabaseClient:
     """
     Get or create database operations instance.
     
     Returns:
-        DatabaseOperations instance
+        DatabaseClient instance
     """
     global _db_operations
     if _db_operations is None:
-        _db_operations = DatabaseOperations()
+        _db_operations = DatabaseClient()
     return _db_operations
 
 # Health check function

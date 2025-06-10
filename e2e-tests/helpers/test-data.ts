@@ -9,7 +9,7 @@ export interface TestUser {
 }
 
 export interface TestJobData {
-  agentType: 'text_processing' | 'summarization' | 'web_scraping';
+  agent_identifier: string;
   title: string;
   data: Record<string, any>;
 }
@@ -28,37 +28,28 @@ export const testUsers: Record<string, TestUser> = {
   }
 };
 
-// Test job data for different agent types
-export const testJobs: Record<string, TestJobData> = {
-  textProcessing: {
-    agentType: 'text_processing',
-    title: 'E2E Test Text Processing',
+// Test jobs using the actual simple_example_agent
+export const testJobs = {
+  simple_prompt: {
+    agent_identifier: 'simple_prompt',
+    title: 'Simple Prompt Test',
     data: {
-      input_text: 'This is a test text for sentiment analysis. I am very happy with this service!',
-      operation: 'sentiment_analysis',
-      language: 'en'
-    }
+      prompt: 'Hello, how are you today?',
+      max_tokens: 100
+    },
+    priority: 5,
+    tags: ['test', 'prompt']
   },
   
-  summarization: {
-    agentType: 'summarization',
-    title: 'E2E Test Summarization',
+  complex_prompt: {
+    agent_identifier: 'simple_prompt', 
+    title: 'Complex Prompt Test',
     data: {
-      input_text: 'This is a long text that needs to be summarized. It contains multiple sentences with various topics. The goal is to create a concise summary that captures the main points of the original text. This will help users quickly understand the key information without reading the entire document.',
-      max_summary_length: 100,
-      format: 'paragraph'
-    }
-  },
-  
-  webScraping: {
-    agentType: 'web_scraping',
-    title: 'E2E Test Web Scraping',
-    data: {
-      input_url: 'https://httpbin.org/html',
-      max_pages: 1,
-      extract_metadata: true,
-      selectors: ['h1', 'p']
-    }
+      prompt: 'Explain quantum computing in simple terms that a beginner can understand.',
+      max_tokens: 500
+    },
+    priority: 7,
+    tags: ['test', 'complex', 'prompt']
   }
 };
 
@@ -77,8 +68,9 @@ export const apiEndpoints = {
   },
   agents: {
     list: '/agents',
-    info: (type: string) => `/agents/${type}`,
-    test: (type: string) => `/agents/${type}/test`
+    info: (identifier: string) => `/agents/${identifier}`,
+    test: (identifier: string) => `/agents/${identifier}/test`,
+    schema: (identifier: string) => `/agents/${identifier}/schema`
   }
 };
 
@@ -101,35 +93,20 @@ export const selectors = {
     loginForm: '[data-testid="login-form"]'
   },
   
-  // Job Creation Form
+  // Job Creation Form (Dynamic Agent Form)
   jobForm: {
     container: '[data-testid="job-form"]',
-    agentTypeSelect: '[data-testid="agent-type-select"]',
+    agentSelector: '[data-testid="agent-selector"]',
     titleInput: '[data-testid="job-title-input"]',
     submitButton: '[data-testid="submit-job-button"]',
+    loadingState: '[data-testid="loading-schema"]',
+    errorState: '[data-testid="schema-error"]',
     
-    // Text Processing fields
-    textProcessing: {
-      inputText: '[data-testid="input-text"]',
-      operation: '[data-testid="operation-select"]',
-      language: '[data-testid="language-select"]'
-    },
-    
-    // Summarization fields
-    summarization: {
-      inputText: '[data-testid="input-text"]',
-      inputUrl: '[data-testid="input-url"]',
-      maxLength: '[data-testid="max-summary-length"]',
-      format: '[data-testid="format-select"]'
-    },
-    
-    // Web Scraping fields
-    webScraping: {
-      inputUrl: '[data-testid="input-url"]',
-      maxPages: '[data-testid="max-pages"]',
-      selectors: '[data-testid="selectors-input"]',
-      extractMetadata: '[data-testid="extract-metadata-checkbox"]'
-    }
+    // Dynamic form fields (will vary by agent)
+    dynamicField: (fieldName: string) => `[data-testid="field-${fieldName}"]`,
+    textInput: '[data-testid^="field-"][data-testid$="-input"]',
+    select: '[data-testid^="field-"][data-testid$="-select"]',
+    checkbox: '[data-testid^="field-"][data-testid$="-checkbox"]'
   },
   
   // Job List
@@ -138,6 +115,7 @@ export const selectors = {
     jobItem: '[data-testid^="job-item-"]',
     jobTitle: '[data-testid^="job-title-"]',
     jobStatus: '[data-testid^="job-status-"]',
+    jobAgentId: '[data-testid^="job-agent-id-"]',
     jobActions: '[data-testid^="job-actions-"]',
     viewButton: '[data-testid^="view-job-"]',
     deleteButton: '[data-testid^="delete-job-"]',
@@ -150,7 +128,7 @@ export const selectors = {
     container: '[data-testid="job-details"]',
     title: '[data-testid="job-title"]',
     status: '[data-testid="job-status"]',
-    agentType: '[data-testid="job-agent-type"]',
+    agentIdentifier: '[data-testid="job-agent-identifier"]',
     createdAt: '[data-testid="job-created-at"]',
     updatedAt: '[data-testid="job-updated-at"]',
     inputData: '[data-testid="job-input-data"]',
@@ -187,58 +165,96 @@ export const jobStatusProgression = [
   'completed' // or 'failed'
 ];
 
-// Helper to generate unique test data
-export function generateTestData(baseName: string): { 
-  email: string; 
-  title: string; 
-  timestamp: string;
-} {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  return {
-    email: `${baseName}-${timestamp}@test.com`,
-    title: `${baseName} ${timestamp}`,
-    timestamp
-  };
-}
+// Generate test data with unique identifiers
+export const generateTestData = (suffix: string) => ({
+  agent_identifier: 'simple_prompt',
+  title: `Test Job ${suffix}`,
+  data: {
+    prompt: `This is a test prompt for ${suffix}`,
+    max_tokens: 200
+  },
+  priority: Math.floor(Math.random() * 10) + 1,
+  tags: ['test', 'auto-generated']
+});
 
-// Helper to create expected job result structure based on agent type
-export function getExpectedJobResultStructure(agentType: string): Record<string, string> {
-  switch (agentType) {
-    case 'text_processing':
+// Invalid job data for testing validation
+export const invalidJobData = {
+  no_agent: {
+    title: 'Missing Agent',
+    data: {
+      prompt: 'Test prompt'
+    }
+  },
+  
+  invalid_agent: {
+    agent_identifier: 'nonexistent_agent',
+    title: 'Invalid Agent',
+    data: {
+      prompt: 'Test prompt'
+    }
+  },
+  
+  missing_data: {
+    agent_identifier: 'simple_prompt',
+    title: 'Missing Data'
+  },
+  
+  invalid_data: {
+    agent_identifier: 'simple_prompt', 
+    title: 'Invalid Data',
+    data: {
+      // Missing required prompt field
+      max_tokens: 100
+    }
+  }
+};
+
+// Helper to create expected job result structure based on agent identifier
+export function getExpectedJobResultStructure(agentIdentifier: string): Record<string, string> {
+  // Map agent identifiers to expected result structures
+  switch (agentIdentifier) {
+    case 'example_research_agent':
       return {
-        type: 'text_processing',
-        processed_text: 'string',
-        'analysis.sentiment.score': 'number',
-        'analysis.sentiment.label': 'string',
-        'analysis.sentiment.confidence': 'number'
+        agent_identifier: 'string',
+        results: 'object',
+        'results.0.title': 'string',
+        'results.0.content': 'string',
+        total_results: 'number',
+        processing_time_ms: 'number'
       };
       
-    case 'summarization':
+    case 'content_summarizer':
       return {
-        type: 'summarization',
+        agent_identifier: 'string',
         summary: 'string',
         original_length: 'number',
         summary_length: 'number',
-        compression_ratio: 'number'
+        compression_ratio: 'number',
+        processing_time_ms: 'number'
       };
       
-    case 'web_scraping':
+    case 'web_data_extractor':
       return {
-        type: 'web_scraping',
-        'scraped_data.url': 'string',
-        'scraped_data.content': 'string',
+        agent_identifier: 'string',
+        'extracted_data.url': 'string',
+        'extracted_data.content': 'string',
         pages_processed: 'number',
-        success_rate: 'number'
+        success_rate: 'number',
+        processing_time_ms: 'number'
       };
       
     default:
-      return {};
+      // Generic structure for unknown agents
+      return {
+        agent_identifier: 'string',
+        processing_time_ms: 'number'
+      };
   }
 }
 
 // Helper to validate job result structure
-export function isValidJobResult(result: any, agentType: string): boolean {
-  const expectedStructure = getExpectedJobResultStructure(agentType);
+export function isValidJobResult(result: any, agentIdentifier: string): boolean {
+  const expectedStructure = getExpectedJobResultStructure(agentIdentifier);
   
   for (const [path, expectedType] of Object.entries(expectedStructure)) {
     const value = getNestedValue(result, path);

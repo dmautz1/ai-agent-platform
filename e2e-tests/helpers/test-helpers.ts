@@ -60,14 +60,31 @@ export class JobHelper {
     // Wait for form to load
     await this.page.waitForSelector(selectors.jobForm.container, { timeout: timeouts.pageLoad });
     
-    // Select agent type
-    await this.page.selectOption(selectors.jobForm.agentTypeSelect, jobData.agentType);
+    // Select agent from the agent selector (dropdown or similar UI)
+    await this.page.click(selectors.jobForm.agentSelector);
+    await this.page.click(`[data-testid="agent-option-${jobData.agent_identifier}"]`);
+    
+    // Wait for schema to load
+    await this.page.waitForSelector(selectors.jobForm.titleInput, { timeout: timeouts.medium });
+    
+    // Check for any loading states or errors
+    const loadingElement = this.page.locator(selectors.jobForm.loadingState);
+    const errorElement = this.page.locator(selectors.jobForm.errorState);
+    
+    if (await loadingElement.isVisible()) {
+      await loadingElement.waitFor({ state: 'hidden', timeout: timeouts.medium });
+    }
+    
+    if (await errorElement.isVisible()) {
+      const errorText = await errorElement.textContent();
+      throw new Error(`Failed to load agent schema: ${errorText}`);
+    }
     
     // Fill in job title
     await this.page.fill(selectors.jobForm.titleInput, jobData.title);
     
-    // Fill agent-specific fields
-    await this.fillAgentSpecificFields(jobData);
+    // Fill dynamic form fields based on the agent's schema
+    await this.fillDynamicFields(jobData);
     
     // Submit the job
     await this.page.click(selectors.jobForm.submitButton);
@@ -86,56 +103,35 @@ export class JobHelper {
     return jobId;
   }
 
-  private async fillAgentSpecificFields(jobData: TestJobData): Promise<void> {
-    switch (jobData.agentType) {
-      case 'text_processing':
-        await this.page.fill(selectors.jobForm.textProcessing.inputText, jobData.data.input_text);
+  private async fillDynamicFields(jobData: TestJobData): Promise<void> {
+    // Iterate through the data fields and fill them dynamically
+    for (const [fieldName, fieldValue] of Object.entries(jobData.data)) {
+      const fieldSelector = selectors.jobForm.dynamicField(fieldName);
+      
+      try {
+        // Check if field exists
+        const fieldElement = this.page.locator(fieldSelector);
         
-        if (jobData.data.operation) {
-          await this.page.selectOption(selectors.jobForm.textProcessing.operation, jobData.data.operation);
+        if (await fieldElement.isVisible()) {
+          if (typeof fieldValue === 'boolean') {
+            // Handle checkbox fields
+            if (fieldValue) {
+              await fieldElement.check();
+            } else {
+              await fieldElement.uncheck();
+            }
+          } else if (typeof fieldValue === 'string' || typeof fieldValue === 'number') {
+            // Handle text inputs and selects
+            await fieldElement.fill(String(fieldValue));
+          } else if (Array.isArray(fieldValue)) {
+            // Handle array fields (convert to comma-separated string)
+            await fieldElement.fill(fieldValue.join(', '));
+          }
         }
-        
-        if (jobData.data.language) {
-          await this.page.selectOption(selectors.jobForm.textProcessing.language, jobData.data.language);
-        }
-        break;
-        
-      case 'summarization':
-        if (jobData.data.input_text) {
-          await this.page.fill(selectors.jobForm.summarization.inputText, jobData.data.input_text);
-        }
-        
-        if (jobData.data.input_url) {
-          await this.page.fill(selectors.jobForm.summarization.inputUrl, jobData.data.input_url);
-        }
-        
-        if (jobData.data.max_summary_length) {
-          await this.page.fill(selectors.jobForm.summarization.maxLength, jobData.data.max_summary_length.toString());
-        }
-        
-        if (jobData.data.format) {
-          await this.page.selectOption(selectors.jobForm.summarization.format, jobData.data.format);
-        }
-        break;
-        
-      case 'web_scraping':
-        await this.page.fill(selectors.jobForm.webScraping.inputUrl, jobData.data.input_url);
-        
-        if (jobData.data.max_pages) {
-          await this.page.fill(selectors.jobForm.webScraping.maxPages, jobData.data.max_pages.toString());
-        }
-        
-        if (jobData.data.selectors) {
-          const selectorsString = Array.isArray(jobData.data.selectors) 
-            ? jobData.data.selectors.join(', ')
-            : jobData.data.selectors;
-          await this.page.fill(selectors.jobForm.webScraping.selectors, selectorsString);
-        }
-        
-        if (jobData.data.extract_metadata) {
-          await this.page.check(selectors.jobForm.webScraping.extractMetadata);
-        }
-        break;
+      } catch (error) {
+        console.warn(`Failed to fill field ${fieldName}:`, error);
+        // Continue with other fields
+      }
     }
   }
 
@@ -178,7 +174,7 @@ export class JobHelper {
     // Extract job details from the page
     const title = await this.page.locator(selectors.jobDetails.title).textContent();
     const status = await this.page.locator(selectors.jobDetails.status).textContent();
-    const agentType = await this.page.locator(selectors.jobDetails.agentType).textContent();
+    const agentIdentifier = await this.page.locator(selectors.jobDetails.agentIdentifier).textContent();
     
     // Try to get result if available
     let result = null;
@@ -198,7 +194,7 @@ export class JobHelper {
       id: jobId,
       title: title?.trim(),
       status: status?.toLowerCase().trim(),
-      agentType: agentType?.trim(),
+      agent_identifier: agentIdentifier?.trim(),
       result
     };
   }
@@ -245,6 +241,17 @@ export class JobHelper {
     
     return jobs;
   }
+
+  async selectAgent(agentIdentifier: string): Promise<void> {
+    // Click on agent selector
+    await this.page.click(selectors.jobForm.agentSelector);
+    
+    // Wait for dropdown to open and select the agent
+    await this.page.click(`[data-testid="agent-option-${agentIdentifier}"]`);
+    
+    // Wait for schema to load
+    await this.page.waitForTimeout(1000);
+  }
 }
 
 /**
@@ -259,8 +266,8 @@ export class NavigationHelper {
   }
 
   async goToJobCreation(): Promise<void> {
-    await this.page.goto('/schedule');
-    await this.page.waitForLoadState('networkidle');
+    await this.page.click(selectors.nav.newJob);
+    await this.page.waitForSelector(selectors.jobForm.container);
   }
 
   async goToJobDetails(jobId: string): Promise<void> {
@@ -271,6 +278,10 @@ export class NavigationHelper {
   async refreshPage(): Promise<void> {
     await this.page.reload();
     await this.page.waitForLoadState('networkidle');
+  }
+
+  async goToNewJob(): Promise<void> {
+    await this.goToJobCreation();
   }
 }
 
@@ -317,6 +328,14 @@ export class ApiHelper {
   async getJobs(): Promise<any[]> {
     const response = await this.makeAuthenticatedRequest('GET', '/jobs');
     return response.data || response;
+  }
+
+  async getAvailableAgents(): Promise<any[]> {
+    const response = await this.makeAuthenticatedRequest('GET', '/agents');
+    
+    // Convert agents object to array
+    const agentsData = response.agents || {};
+    return Object.values(agentsData);
   }
 }
 

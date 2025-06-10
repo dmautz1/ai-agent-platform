@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import type { LoginRequest } from '@/lib/types';
+import type { LoginRequest } from '@/lib/models';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -25,8 +25,9 @@ export const SignInForm: React.FC = () => {
 
     try {
       await signIn(formData);
-    } catch (err: any) {
-      setError(err.message || 'An error occurred during sign in');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred during sign in';
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

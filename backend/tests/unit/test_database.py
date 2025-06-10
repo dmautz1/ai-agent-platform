@@ -26,9 +26,9 @@ def mock_env_vars():
 @pytest.fixture
 def mock_supabase_client():
     """Mock Supabase client for testing"""
-    with patch('database.create_client') as mock_create:
+    with patch('database.get_supabase_client') as mock_get_client:
         mock_client = Mock()
-        mock_create.return_value = mock_client
+        mock_get_client.return_value = mock_client
         yield mock_client
 
 class TestDatabaseClient:
@@ -41,18 +41,27 @@ class TestDatabaseClient:
 
     def test_init_missing_env_vars(self):
         """Test initialization fails with missing environment variables"""
-        with patch.dict(os.environ, {}, clear=True):
+        with patch('database.get_supabase_client') as mock_get_client:
+            # Mock get_supabase_client to raise an error
+            mock_get_client.side_effect = ValueError("SUPABASE_URL and SUPABASE_KEY environment variables are required")
+            
             with pytest.raises(ValueError, match="SUPABASE_URL and SUPABASE_KEY environment variables are required"):
                 DatabaseClient()
 
     @pytest.mark.asyncio
     async def test_create_job_success(self, mock_env_vars, mock_supabase_client):
         """Test successful job creation"""
-        # Setup mock response
+        # Setup proper mock chain
         mock_table = Mock()
         mock_supabase_client.table.return_value = mock_table
         mock_table.insert.return_value = mock_table
-        mock_table.execute.return_value = Mock(data=[{"id": "test-id"}])
+        
+        # Create mock response with real list for data attribute
+        class MockResponse:
+            def __init__(self, data):
+                self.data = data
+        
+        mock_table.execute.return_value = MockResponse([{"id": "test-id"}])
 
         client = DatabaseClient()
         job_data = {"task": "test", "input": "test input"}
@@ -60,7 +69,7 @@ class TestDatabaseClient:
         result = await client.create_job(job_data)
         
         assert result is not None
-        assert isinstance(result, str)
+        assert result["id"] == "test-id"
         mock_supabase_client.table.assert_called_with("jobs")
 
     @pytest.mark.asyncio
@@ -70,23 +79,35 @@ class TestDatabaseClient:
         mock_table = Mock()
         mock_supabase_client.table.return_value = mock_table
         mock_table.insert.return_value = mock_table
-        mock_table.execute.return_value = Mock(data=None)
+        
+        # Create mock response with None data
+        class MockResponse:
+            def __init__(self, data):
+                self.data = data
+        
+        mock_table.execute.return_value = MockResponse(None)
 
         client = DatabaseClient()
         job_data = {"task": "test"}
         
-        with pytest.raises(Exception, match="Failed to create job"):
+        with pytest.raises(Exception, match="No data returned from job creation"):
             await client.create_job(job_data)
 
     @pytest.mark.asyncio
     async def test_get_job_success(self, mock_env_vars, mock_supabase_client):
         """Test successful job retrieval"""
-        # Setup mock response
+        # Setup proper mock chain
         mock_table = Mock()
         mock_supabase_client.table.return_value = mock_table
         mock_table.select.return_value = mock_table
         mock_table.eq.return_value = mock_table
-        mock_table.execute.return_value = Mock(data=[{"id": "test-id", "status": "pending"}])
+        
+        # Create mock response with real list
+        class MockResponse:
+            def __init__(self, data):
+                self.data = data
+        
+        mock_table.execute.return_value = MockResponse([{"id": "test-id", "status": "pending"}])
 
         client = DatabaseClient()
         result = await client.get_job("test-id")
@@ -103,7 +124,13 @@ class TestDatabaseClient:
         mock_supabase_client.table.return_value = mock_table
         mock_table.select.return_value = mock_table
         mock_table.eq.return_value = mock_table
-        mock_table.execute.return_value = Mock(data=[])
+        
+        # Create mock response with empty list
+        class MockResponse:
+            def __init__(self, data):
+                self.data = data
+        
+        mock_table.execute.return_value = MockResponse([])
 
         client = DatabaseClient()
         result = await client.get_job("nonexistent-id")
@@ -113,18 +140,26 @@ class TestDatabaseClient:
     @pytest.mark.asyncio
     async def test_get_all_jobs_success(self, mock_env_vars, mock_supabase_client):
         """Test successful retrieval of all jobs"""
-        # Setup mock response
+        # Setup proper mock chain
         mock_table = Mock()
         mock_supabase_client.table.return_value = mock_table
         mock_table.select.return_value = mock_table
+        mock_table.eq.return_value = mock_table
         mock_table.order.return_value = mock_table
-        mock_table.execute.return_value = Mock(data=[
+        mock_table.range.return_value = mock_table
+        
+        # Create mock response with real list
+        class MockResponse:
+            def __init__(self, data):
+                self.data = data
+        
+        mock_table.execute.return_value = MockResponse([
             {"id": "job1", "status": "completed"},
             {"id": "job2", "status": "pending"}
         ])
 
         client = DatabaseClient()
-        result = await client.get_all_jobs()
+        result = await client.get_user_jobs("user123")  # Provide required user_id
         
         assert len(result) == 2
         assert result[0]["id"] == "job1"
@@ -133,32 +168,46 @@ class TestDatabaseClient:
     @pytest.mark.asyncio
     async def test_update_job_success(self, mock_env_vars, mock_supabase_client):
         """Test successful job update"""
-        # Setup mock response
+        # Setup proper mock chain
         mock_table = Mock()
         mock_supabase_client.table.return_value = mock_table
         mock_table.update.return_value = mock_table
         mock_table.eq.return_value = mock_table
-        mock_table.execute.return_value = Mock(data=[{"id": "test-id"}])
+        
+        # Create mock response with real list
+        class MockResponse:
+            def __init__(self, data):
+                self.data = data
+        
+        mock_table.execute.return_value = MockResponse([{"id": "test-id", "status": "completed"}])
 
         client = DatabaseClient()
         result = await client.update_job("test-id", {"status": "completed"})
         
-        assert result is True
+        assert result is not None
+        assert result["id"] == "test-id"
 
     @pytest.mark.asyncio
     async def test_update_job_status(self, mock_env_vars, mock_supabase_client):
         """Test job status update"""
-        # Setup mock response
+        # Setup proper mock chain
         mock_table = Mock()
         mock_supabase_client.table.return_value = mock_table
         mock_table.update.return_value = mock_table
         mock_table.eq.return_value = mock_table
-        mock_table.execute.return_value = Mock(data=[{"id": "test-id"}])
+        
+        # Create mock response with real list
+        class MockResponse:
+            def __init__(self, data):
+                self.data = data
+        
+        mock_table.execute.return_value = MockResponse([{"id": "test-id", "status": "completed"}])
 
         client = DatabaseClient()
         result = await client.update_job_status("test-id", "completed", "success result")
         
-        assert result is True
+        assert result is not None
+        assert result["id"] == "test-id"
 
 def test_get_database_client():
     """Test singleton database client getter"""

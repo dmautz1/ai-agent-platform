@@ -49,6 +49,10 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({
 }) => {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
+  const removeToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+  }, []);
+
   const addToast = useCallback((toast: Omit<Toast, 'id'>) => {
     const id = Math.random().toString(36).substring(2, 9);
     const newToast: Toast = {
@@ -70,11 +74,7 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({
     }
 
     return id;
-  }, [maxToasts]);
-
-  const removeToast = useCallback((id: string) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
-  }, []);
+  }, [maxToasts, removeToast]);
 
   const removeAllToasts = useCallback(() => {
     setToasts([]);
@@ -101,6 +101,7 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({
 };
 
 // Toast hook
+// eslint-disable-next-line react-refresh/only-export-components
 export const useToast = () => {
   const context = useContext(ToastContext);
   if (!context) {
@@ -141,7 +142,7 @@ export const useToast = () => {
       }: {
         loading: string;
         success: string | ((data: T) => string);
-        error: string | ((error: any) => string);
+        error: string | ((error: unknown) => string);
       }
     ) => {
       const id = addToast({ type: 'loading', message: loadingMessage, persistent: true });

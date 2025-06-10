@@ -15,11 +15,11 @@ import time
 import uuid
 from asyncio import Queue, Task
 from typing import Dict, Any, Optional, List, Callable, Set
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from dataclasses import dataclass, field
 
-from models import JobStatus, JobType
+from models import JobStatus
 from database import get_database_operations
 from agent import BaseAgent, AgentExecutionResult, get_agent_registry
 from agent_framework import get_registered_agents, validate_job_data
@@ -45,7 +45,7 @@ class JobTask:
     priority: int = JobPriority.NORMAL
     max_retries: int = 3
     retry_count: int = 0
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     scheduled_at: Optional[datetime] = None
     tags: Optional[List[str]] = None
     metadata: Optional[Dict[str, Any]] = None
@@ -57,7 +57,7 @@ class JobTask:
     @property
     def is_ready(self) -> bool:
         """Check if job is ready to execute"""
-        return datetime.utcnow() >= self.scheduled_at
+        return datetime.now(timezone.utc) >= self.scheduled_at
 
     @property
     def can_retry(self) -> bool:
@@ -72,14 +72,14 @@ class JobExecutionStatus:
         self.completed_jobs: int = 0
         self.failed_jobs: int = 0
         self.retried_jobs: int = 0
-        self.start_time: datetime = datetime.utcnow()
+        self.start_time: datetime = datetime.now(timezone.utc)
         self.job_metrics: Dict[str, Dict[str, Any]] = {}
 
     def start_job(self, job_id: str):
         """Mark job as started"""
         self.active_jobs.add(job_id)
         self.job_metrics[job_id] = {
-            'start_time': datetime.utcnow(),
+            'start_time': datetime.now(timezone.utc),
             'status': JobStatus.running
         }
 
@@ -93,7 +93,7 @@ class JobExecutionStatus:
         
         if job_id in self.job_metrics:
             self.job_metrics[job_id].update({
-                'end_time': datetime.utcnow(),
+                'end_time': datetime.now(timezone.utc),
                 'success': success,
                 'execution_time': execution_time,
                 'status': JobStatus.completed if success else JobStatus.failed
@@ -107,7 +107,7 @@ class JobExecutionStatus:
 
     def get_metrics(self) -> Dict[str, Any]:
         """Get current pipeline metrics"""
-        uptime = datetime.utcnow() - self.start_time
+        uptime = datetime.now(timezone.utc) - self.start_time
         return {
             'active_jobs': len(self.active_jobs),
             'completed_jobs': self.completed_jobs,
@@ -291,7 +291,7 @@ class JobPipeline:
             )
 
             # Check if job should be scheduled for later
-            if scheduled_at and scheduled_at > datetime.utcnow():
+            if scheduled_at and scheduled_at > datetime.now(timezone.utc):
                 self.scheduled_jobs.append(job_task)
                 self.scheduled_jobs.sort(key=lambda x: x.scheduled_at)
                 logger.info(f"Job {job_id} scheduled for {scheduled_at}")
@@ -335,7 +335,7 @@ class JobPipeline:
         
         while not self.is_shutdown:
             try:
-                current_time = datetime.utcnow()
+                current_time = datetime.now(timezone.utc)
                 ready_jobs = []
                 
                 # Find jobs ready for execution
@@ -398,27 +398,36 @@ class JobPipeline:
             
             # Execute the job using the agent framework
             with perf_logger.time_operation(f"job_execution_{job_task.agent_name}", user_id=job_task.user_id):
-                # Check if agent has an execute_job method
-                if hasattr(agent, 'execute_job'):
-                    result = await agent.execute_job(job_id, validated_data, job_task.user_id)
-                elif hasattr(agent, 'process'):
-                    # Fallback to process method for self-contained agents
-                    result_data = await agent.process(validated_data)
-                    result = AgentExecutionResult(
-                        success=True,
-                        result=json.dumps(result_data) if isinstance(result_data, dict) else str(result_data)
-                    )
-                else:
-                    raise ValueError(f"Agent {job_task.agent_name} has no execution method")
+                # Call _execute_job_logic directly to avoid duplicate status updates
+                # The pipeline maintains full control over job status management
+                result = await agent._execute_job_logic(validated_data)
+                
+                # Ensure result has execution_time set
+                if result.execution_time is None:
+                    result.execution_time = time.time() - start_time
+                
+                # Update agent state (normally done in execute_job)
+                agent.execution_count += 1
+                agent.last_execution_time = datetime.now(timezone.utc)
             
-            execution_time = time.time() - start_time
+            execution_time = result.execution_time
             
             if result.success:
-                # Job completed successfully
+                # Job completed successfully - properly serialize the result as JSON
+                result_text = None
+                if result.result:
+                    if isinstance(result.result, dict):
+                        # If result is a dictionary, convert to proper JSON
+                        result_text = json.dumps(result.result, ensure_ascii=False, default=str)
+                    else:
+                        # If result is already a string, use it directly
+                        result_text = str(result.result)
+                
                 await self._update_job_status(
                     job_id, 
                     JobStatus.completed, 
-                    result=result.result
+                    result=result_text,
+                    result_format=result.result_format
                 )
                 
                 self.status_tracker.complete_job(job_id, True, execution_time)
@@ -478,7 +487,7 @@ class JobPipeline:
         
         # Calculate retry delay with exponential backoff
         delay = self.retry_delay_base ** job_task.retry_count
-        retry_time = datetime.utcnow() + timedelta(seconds=delay)
+        retry_time = datetime.now(timezone.utc) + timedelta(seconds=delay)
         job_task.scheduled_at = retry_time
         
         self.status_tracker.retry_job(job_task.job_id)
@@ -499,7 +508,8 @@ class JobPipeline:
         job_id: str,
         status: JobStatus,
         result: Optional[str] = None,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        result_format: Optional[str] = None
     ):
         """Update job status in the database"""
         try:
@@ -507,7 +517,8 @@ class JobPipeline:
                 job_id=job_id,
                 status=status.value,
                 result=result,
-                error_message=error_message
+                error_message=error_message,
+                result_format=result_format
             )
         except Exception as e:
             logger.error(f"Failed to update job status for {job_id}", exception=e)

@@ -9,8 +9,8 @@
 
 /// <reference types="node" />
 
-import { api, handleApiError, formatValidationErrors, isValidationError } from '../../src/lib/api';
-import type { CreateJobRequest, JobsQuery, LoginRequest } from '../../src/lib/types';
+import { handleApiError, formatValidationErrors, isValidationError } from '../../src/lib/api';
+import type { CreateJobRequest, JobsQuery, LoginRequest } from '../../src/lib/models';
 
 interface TestResult {
   name: string;
@@ -121,21 +121,10 @@ class APIIntegrationTester {
   }
 }
 
-// Test helper functions
+// Helper function to create test assertions
 function assert(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(`Assertion failed: ${message}`);
-  }
-}
-
-function assertThrows(fn: () => any, expectedMessage?: string): void {
-  try {
-    fn();
-    throw new Error('Expected function to throw, but it did not');
-  } catch (error) {
-    if (expectedMessage && !error.message.includes(expectedMessage)) {
-      throw new Error(`Expected error message to contain "${expectedMessage}", but got: ${error.message}`);
-    }
   }
 }
 
@@ -186,7 +175,7 @@ async function runIntegrationTests(): Promise<void> {
     {
       name: 'isValidationError should identify validation errors',
       fn: async () => {
-        const validationError = { status: 422, errors: {} };
+        const validationError = { status: 422, message: 'Validation failed', errors: {} };
         const otherError = { status: 500, message: 'Server error' };
         
         assert(isValidationError(validationError), 'Should identify validation error');
@@ -238,19 +227,21 @@ async function runIntegrationTests(): Promise<void> {
       name: 'Should validate job creation request structure',
       fn: async () => {
         const validJobRequest: CreateJobRequest = {
+          agent_identifier: 'simple_prompt',
           data: {
-            agent_type: 'text_processing',
-            title: 'Test Job',
-            input_text: 'Sample text for processing',
-            operation: 'sentiment_analysis'
+            agent_identifier: 'simple_prompt',
+            title: 'Integration Test Job',
+            prompt: 'Test prompt for integration testing'
           },
           priority: 'normal',
-          tags: ['test']
+          tags: ['integration-test']
         };
         
-        assert(validJobRequest.data.agent_type === 'text_processing', 'Should have valid agent type');
-        assert(validJobRequest.data.title?.length > 0, 'Should have non-empty title');
-        assert(Array.isArray(validJobRequest.tags), 'Should have tags array');
+        // Validate the request structure
+        assert(validJobRequest.agent_identifier === 'simple_prompt', 'Should have valid agent identifier at top level');
+        assert(validJobRequest.data.agent_identifier === 'simple_prompt', 'Should have valid agent identifier in data');
+        assert(validJobRequest.data.title === 'Integration Test Job', 'Should have valid title');
+        assert(validJobRequest.data.prompt === 'Test prompt for integration testing', 'Should have valid prompt');
       }
     },
     {
@@ -258,7 +249,7 @@ async function runIntegrationTests(): Promise<void> {
       fn: async () => {
         const validQuery: JobsQuery = {
           status: ['pending', 'running'],
-          agent_type: 'text_processing',
+          agent_identifier: 'simple_prompt',
           page: 1,
           per_page: 20
         };
@@ -306,7 +297,7 @@ async function runIntegrationTests(): Promise<void> {
           message: 'Validation failed',
           errors: {
             'data.title': ['Title is required', 'Title must be unique'],
-            'data.input_text': ['Input text is too short']
+            'data.prompt': ['Prompt is too short']
           }
         };
         
@@ -372,9 +363,9 @@ async function runIntegrationTests(): Promise<void> {
       fn: async () => {
         const largeText = 'x'.repeat(10000); // 10KB of text
         const largeData = {
-          agent_type: 'text_processing',
+          agent_identifier: 'simple_prompt',
           title: 'Large Text Processing Job',
-          input_text: largeText,
+          prompt: largeText,
           metadata: {
             large_array: Array.from({ length: 1000 }, (_, i) => `item-${i}`),
             nested_object: {
@@ -393,7 +384,7 @@ async function runIntegrationTests(): Promise<void> {
         assert(serialized.length > 10000, 'Should handle large serialized data');
         
         const parsed = JSON.parse(serialized);
-        assert(parsed.input_text.length === 10000, 'Should preserve large text');
+        assert(parsed.prompt.length === 10000, 'Should preserve large text');
         assert(parsed.metadata.large_array.length === 1000, 'Should preserve large arrays');
         assert(parsed.metadata.nested_object.level1.level2.level3.data === 'deep nested data', 'Should preserve nested objects');
       }

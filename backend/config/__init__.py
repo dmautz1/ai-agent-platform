@@ -1,23 +1,32 @@
 """
-Configuration package for the AI Agent Template backend.
+Configuration Module - Central configuration management for the AI Agent Template
 
-This package contains all configuration-related modules:
-- environment: Environment configuration management
-- adk: Google ADK configuration and agent creation
-- cors: CORS configuration management
+This module provides comprehensive configuration management for:
+- Agent configuration with profiles and performance modes
+- Google AI configuration and authentication  
+- Database configuration for Supabase
+- Environment variables and validation
+- JWT authentication settings
 """
 
-from .environment import *
-from .adk import *
-from .cors import *
+from .google_ai import *
+from .agent import *
+# from .database import *  # Commented out - file doesn't exist
+# from .auth import *  # Commented out - file doesn't exist
 
+# Export configuration components
 __all__ = [
-    # Environment configuration
-    'EnvironmentConfig', 'get_config', 'validate_config',
+    # Agent configuration
+    'AgentConfig', 'AgentProfile', 'PerformanceMode',
+    'ModelConfig', 'ExecutionConfig', 'get_agent_config',
     
-    # ADK configuration  
-    'ADKConfig', 'get_adk_config', 'validate_adk_config',
+    # Google AI configuration
+    'GoogleAIConfig', 'get_google_ai_config', 'validate_google_ai_environment',
+    'get_generative_model', 'get_environment_info',
     
-    # CORS configuration
-    'CORSConfig', 'get_cors_config'
+    # Database configuration
+    'DatabaseConfig', 'get_database_config', 'validate_database_config',
+    
+    # Authentication configuration
+    'AuthConfig', 'get_auth_config', 'validate_auth_config'
 ] 

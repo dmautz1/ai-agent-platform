@@ -6,6 +6,7 @@ They require a real Supabase instance configured in the environment.
 """
 
 import pytest
+import pytest_asyncio
 import asyncio
 import uuid
 import time
@@ -17,7 +18,7 @@ import os
 # Add the backend directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from database import DatabaseOperations, get_database_operations, check_database_health
+from database import DatabaseClient, get_database_operations, check_database_health
 from config.environment import get_settings, validate_required_settings
 from logging_system import get_logger
 
@@ -30,7 +31,7 @@ def event_loop():
     yield loop
     loop.close()
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", autouse=True)
 async def verify_environment():
     """Verify that required environment variables are set for integration tests."""
     try:
@@ -51,18 +52,18 @@ async def verify_environment():
     except Exception as e:
         pytest.skip(f"Environment setup failed: {e}")
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def db_operations():
     """Get database operations instance."""
     return get_database_operations()
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def test_user_id():
     """Generate a test user ID."""
     return str(uuid.uuid4())
 
-@pytest.fixture
-async def cleanup_test_jobs(db_operations: DatabaseOperations):
+@pytest_asyncio.fixture
+async def cleanup_test_jobs(db_operations: DatabaseClient):
     """Clean up test jobs after each test."""
     test_job_ids = []
     
@@ -94,7 +95,7 @@ class TestSupabaseConnectivity:
         logger.info(f"Database health check passed in {health['connection_time_ms']}ms")
     
     @pytest.mark.asyncio
-    async def test_database_operations_initialization(self, db_operations: DatabaseOperations):
+    async def test_database_operations_initialization(self, db_operations: DatabaseClient):
         """Test that database operations can be initialized."""
         assert db_operations is not None
         assert db_operations.client is not None
@@ -107,15 +108,15 @@ class TestJobCRUDOperations:
     """Test Create, Read, Update, Delete operations for jobs."""
     
     @pytest.mark.asyncio
-    async def test_create_job_success(self, db_operations: DatabaseOperations, test_user_id: str, cleanup_test_jobs):
+    async def test_create_job_success(self, db_operations: DatabaseClient, test_user_id: str, cleanup_test_jobs):
         """Test successful job creation with all required fields."""
         job_data = {
             "user_id": test_user_id,
-            "type": "text_processing",
+            "agent_identifier": "simple_prompt",
             "status": "pending",
             "data": {
-                "input_text": "Test input for processing",
-                "operation": "summarize"
+                "prompt": "Test input for processing",
+                "max_tokens": 100
             }
         }
         
@@ -125,7 +126,7 @@ class TestJobCRUDOperations:
         assert created_job is not None
         assert "id" in created_job
         assert created_job["user_id"] == test_user_id
-        assert created_job["type"] == "text_processing"
+        assert created_job["agent_identifier"] == "simple_prompt"
         assert created_job["status"] == "pending"
         assert created_job["data"] == job_data["data"]
         assert "created_at" in created_job
@@ -134,7 +135,7 @@ class TestJobCRUDOperations:
         logger.info(f"Successfully created job {created_job['id']}")
     
     @pytest.mark.asyncio
-    async def test_create_job_minimal_data(self, db_operations: DatabaseOperations, test_user_id: str, cleanup_test_jobs):
+    async def test_create_job_minimal_data(self, db_operations: DatabaseClient, test_user_id: str, cleanup_test_jobs):
         """Test job creation with minimal required data."""
         job_data = {
             "status": "pending"
@@ -148,14 +149,14 @@ class TestJobCRUDOperations:
         assert created_job["status"] == "pending"
     
     @pytest.mark.asyncio
-    async def test_get_job_success(self, db_operations: DatabaseOperations, test_user_id: str, cleanup_test_jobs):
+    async def test_get_job_success(self, db_operations: DatabaseClient, test_user_id: str, cleanup_test_jobs):
         """Test successful job retrieval."""
         # Create a test job first
         job_data = {
             "user_id": test_user_id,
-            "type": "web_scraping",
+            "agent_identifier": "simple_prompt",
             "status": "pending",
-            "data": {"url": "https://example.com"}
+            "data": {"prompt": "Test prompt", "max_tokens": 200}
         }
         
         created_job = await db_operations.create_job(job_data)
@@ -167,18 +168,18 @@ class TestJobCRUDOperations:
         assert retrieved_job is not None
         assert retrieved_job["id"] == created_job["id"]
         assert retrieved_job["user_id"] == test_user_id
-        assert retrieved_job["type"] == "web_scraping"
+        assert retrieved_job["agent_identifier"] == "simple_prompt"
         assert retrieved_job["data"] == job_data["data"]
     
     @pytest.mark.asyncio
-    async def test_get_job_with_user_filter(self, db_operations: DatabaseOperations, test_user_id: str, cleanup_test_jobs):
+    async def test_get_job_with_user_filter(self, db_operations: DatabaseClient, test_user_id: str, cleanup_test_jobs):
         """Test job retrieval with user ID filtering."""
         other_user_id = str(uuid.uuid4())
         
         # Create a job for the test user
         job_data = {
             "user_id": test_user_id,
-            "type": "summarization",
+            "agent_identifier": "simple_prompt",
             "status": "pending"
         }
         
@@ -195,7 +196,7 @@ class TestJobCRUDOperations:
         assert retrieved_job is None
     
     @pytest.mark.asyncio
-    async def test_get_job_not_found(self, db_operations: DatabaseOperations):
+    async def test_get_job_not_found(self, db_operations: DatabaseClient):
         """Test job retrieval when job doesn't exist."""
         nonexistent_id = str(uuid.uuid4())
         
@@ -203,17 +204,18 @@ class TestJobCRUDOperations:
         assert retrieved_job is None
     
     @pytest.mark.asyncio
-    async def test_get_user_jobs(self, db_operations: DatabaseOperations, test_user_id: str, cleanup_test_jobs):
+    async def test_get_user_jobs(self, db_operations: DatabaseClient, test_user_id: str, cleanup_test_jobs):
         """Test retrieving all jobs for a specific user."""
         # Create multiple jobs for the user
-        job_types = ["text_processing", "web_scraping", "summarization"]
+        agent_identifiers = ["simple_prompt", "simple_prompt", "simple_prompt"]
         created_jobs = []
         
-        for job_type in job_types:
+        for i, agent_id in enumerate(agent_identifiers):
             job_data = {
                 "user_id": test_user_id,
-                "type": job_type,
-                "status": "pending"
+                "agent_identifier": agent_id,
+                "status": "pending",
+                "data": {"prompt": f"Test prompt {i}", "max_tokens": 100}
             }
             created_job = await db_operations.create_job(job_data)
             created_jobs.append(created_job)
@@ -222,7 +224,7 @@ class TestJobCRUDOperations:
         # Retrieve user jobs
         user_jobs = await db_operations.get_user_jobs(test_user_id)
         
-        assert len(user_jobs) >= len(job_types)
+        assert len(user_jobs) >= len(agent_identifiers)
         
         # Verify all created jobs are in the results
         created_job_ids = {job["id"] for job in created_jobs}
@@ -236,7 +238,7 @@ class TestJobCRUDOperations:
                 assert job["user_id"] == test_user_id
     
     @pytest.mark.asyncio
-    async def test_get_user_jobs_pagination(self, db_operations: DatabaseOperations, test_user_id: str, cleanup_test_jobs):
+    async def test_get_user_jobs_pagination(self, db_operations: DatabaseClient, test_user_id: str, cleanup_test_jobs):
         """Test pagination in user jobs retrieval."""
         # Create multiple jobs
         num_jobs = 5
@@ -245,8 +247,9 @@ class TestJobCRUDOperations:
         for i in range(num_jobs):
             job_data = {
                 "user_id": test_user_id,
-                "type": f"test_job_{i}",
-                "status": "pending"
+                "agent_identifier": "simple_prompt",
+                "status": "pending",
+                "data": {"prompt": f"Test job {i}", "max_tokens": 50}
             }
             created_job = await db_operations.create_job(job_data)
             created_jobs.append(created_job)
@@ -268,12 +271,12 @@ class TestJobStatusUpdates:
     """Test job status update operations."""
     
     @pytest.mark.asyncio
-    async def test_update_job_status_to_running(self, db_operations: DatabaseOperations, test_user_id: str, cleanup_test_jobs):
+    async def test_update_job_status_to_running(self, db_operations: DatabaseClient, test_user_id: str, cleanup_test_jobs):
         """Test updating job status to running."""
         # Create a pending job
         job_data = {
             "user_id": test_user_id,
-            "type": "text_processing",
+            "agent_identifier": "simple_prompt",
             "status": "pending"
         }
         
@@ -287,12 +290,12 @@ class TestJobStatusUpdates:
         assert updated_job["updated_at"] != created_job["updated_at"]
     
     @pytest.mark.asyncio
-    async def test_update_job_status_to_completed(self, db_operations: DatabaseOperations, test_user_id: str, cleanup_test_jobs):
+    async def test_update_job_status_to_completed(self, db_operations: DatabaseClient, test_user_id: str, cleanup_test_jobs):
         """Test updating job status to completed with result."""
         # Create a running job
         job_data = {
             "user_id": test_user_id,
-            "type": "summarization",
+            "agent_identifier": "simple_prompt",
             "status": "running"
         }
         
@@ -301,8 +304,8 @@ class TestJobStatusUpdates:
         
         # Update status to completed with result
         result_data = {
-            "summary": "This is a test summary",
-            "word_count": 25,
+            "response": "This is a test response",
+            "token_count": 25,
             "processing_time": 2.5
         }
         
@@ -318,12 +321,12 @@ class TestJobStatusUpdates:
         assert updated_job["completed_at"] is not None
     
     @pytest.mark.asyncio
-    async def test_update_job_status_to_failed(self, db_operations: DatabaseOperations, test_user_id: str, cleanup_test_jobs):
+    async def test_update_job_status_to_failed(self, db_operations: DatabaseClient, test_user_id: str, cleanup_test_jobs):
         """Test updating job status to failed with error message."""
         # Create a running job
         job_data = {
             "user_id": test_user_id,
-            "type": "web_scraping",
+            "agent_identifier": "simple_prompt",
             "status": "running"
         }
         
@@ -345,7 +348,7 @@ class TestJobStatusUpdates:
         assert updated_job["failed_at"] is not None
     
     @pytest.mark.asyncio
-    async def test_update_nonexistent_job_status(self, db_operations: DatabaseOperations):
+    async def test_update_nonexistent_job_status(self, db_operations: DatabaseClient):
         """Test updating status of non-existent job."""
         nonexistent_id = str(uuid.uuid4())
         
@@ -356,12 +359,12 @@ class TestJobDeletion:
     """Test job deletion operations."""
     
     @pytest.mark.asyncio
-    async def test_delete_job_success(self, db_operations: DatabaseOperations, test_user_id: str):
+    async def test_delete_job_success(self, db_operations: DatabaseClient, test_user_id: str):
         """Test successful job deletion."""
         # Create a job
         job_data = {
             "user_id": test_user_id,
-            "type": "text_processing",
+            "agent_identifier": "simple_prompt",
             "status": "completed"
         }
         
@@ -376,14 +379,14 @@ class TestJobDeletion:
         assert retrieved_job is None
     
     @pytest.mark.asyncio
-    async def test_delete_job_with_user_filter(self, db_operations: DatabaseOperations, test_user_id: str, cleanup_test_jobs):
+    async def test_delete_job_with_user_filter(self, db_operations: DatabaseClient, test_user_id: str, cleanup_test_jobs):
         """Test job deletion with user ID filtering."""
         other_user_id = str(uuid.uuid4())
         
         # Create a job
         job_data = {
             "user_id": test_user_id,
-            "type": "summarization",
+            "agent_identifier": "simple_prompt",
             "status": "completed"
         }
         
@@ -403,7 +406,7 @@ class TestJobDeletion:
         assert deleted is True
     
     @pytest.mark.asyncio
-    async def test_delete_nonexistent_job(self, db_operations: DatabaseOperations):
+    async def test_delete_nonexistent_job(self, db_operations: DatabaseClient):
         """Test deleting non-existent job."""
         nonexistent_id = str(uuid.uuid4())
         
@@ -414,15 +417,15 @@ class TestJobStatistics:
     """Test job statistics operations."""
     
     @pytest.mark.asyncio
-    async def test_get_job_statistics(self, db_operations: DatabaseOperations, test_user_id: str, cleanup_test_jobs):
+    async def test_get_job_statistics(self, db_operations: DatabaseClient, test_user_id: str, cleanup_test_jobs):
         """Test retrieving job statistics."""
         # Create jobs with different statuses
         test_jobs = [
-            {"status": "pending", "type": "text_processing"},
-            {"status": "running", "type": "web_scraping"}, 
-            {"status": "completed", "type": "summarization"},
-            {"status": "completed", "type": "text_processing"},
-            {"status": "failed", "type": "web_scraping"}
+            {"status": "pending", "agent_identifier": "simple_prompt"},
+            {"status": "running", "agent_identifier": "simple_prompt"}, 
+            {"status": "completed", "agent_identifier": "simple_prompt"},
+            {"status": "completed", "agent_identifier": "simple_prompt"},
+            {"status": "failed", "agent_identifier": "simple_prompt"}
         ]
         
         created_jobs = []
@@ -449,7 +452,7 @@ class TestJobStatistics:
         assert stats["failed_jobs"] >= 1
     
     @pytest.mark.asyncio
-    async def test_get_global_job_statistics(self, db_operations: DatabaseOperations):
+    async def test_get_global_job_statistics(self, db_operations: DatabaseClient):
         """Test retrieving global job statistics (all users)."""
         stats = await db_operations.get_job_statistics()
         
@@ -462,7 +465,7 @@ class TestDataPersistence:
     """Test data persistence and consistency."""
     
     @pytest.mark.asyncio
-    async def test_job_data_persistence_complex_json(self, db_operations: DatabaseOperations, test_user_id: str, cleanup_test_jobs):
+    async def test_job_data_persistence_complex_json(self, db_operations: DatabaseClient, test_user_id: str, cleanup_test_jobs):
         """Test persistence of complex JSON data."""
         complex_data = {
             "nested_object": {
@@ -483,7 +486,7 @@ class TestDataPersistence:
         
         job_data = {
             "user_id": test_user_id,
-            "type": "complex_processing",
+            "agent_identifier": "simple_prompt",
             "status": "pending",
             "data": complex_data
         }
@@ -500,7 +503,7 @@ class TestDataPersistence:
         assert retrieved_job["data"]["mixed_types"]["null_value"] is None
     
     @pytest.mark.asyncio
-    async def test_unicode_and_special_characters(self, db_operations: DatabaseOperations, test_user_id: str, cleanup_test_jobs):
+    async def test_unicode_and_special_characters(self, db_operations: DatabaseClient, test_user_id: str, cleanup_test_jobs):
         """Test persistence of Unicode and special characters."""
         special_data = {
             "unicode_text": "Hello 世界! 🌍 Testing émojis and spéciàl chars",
@@ -511,7 +514,7 @@ class TestDataPersistence:
         
         job_data = {
             "user_id": test_user_id,
-            "type": "unicode_test",
+            "agent_identifier": "simple_prompt",
             "status": "pending",
             "data": special_data
         }
@@ -529,7 +532,7 @@ class TestPerformanceAndLimits:
     """Test performance characteristics and limits."""
     
     @pytest.mark.asyncio
-    async def test_large_job_data_persistence(self, db_operations: DatabaseOperations, test_user_id: str, cleanup_test_jobs):
+    async def test_large_job_data_persistence(self, db_operations: DatabaseClient, test_user_id: str, cleanup_test_jobs):
         """Test persistence of large job data."""
         # Create large data (but reasonable for testing)
         large_text = "x" * 10000  # 10KB of text
@@ -543,7 +546,7 @@ class TestPerformanceAndLimits:
         
         job_data = {
             "user_id": test_user_id,
-            "type": "large_data_test",
+            "agent_identifier": "simple_prompt",
             "status": "pending",
             "data": large_data
         }
@@ -569,13 +572,13 @@ class TestPerformanceAndLimits:
         assert retrieve_time < 5.0  # Should retrieve within 5 seconds
     
     @pytest.mark.asyncio
-    async def test_concurrent_job_operations(self, db_operations: DatabaseOperations, test_user_id: str, cleanup_test_jobs):
+    async def test_concurrent_job_operations(self, db_operations: DatabaseClient, test_user_id: str, cleanup_test_jobs):
         """Test concurrent job creation and updates."""
         # Create multiple jobs concurrently
         async def create_test_job(index: int):
             job_data = {
                 "user_id": test_user_id,
-                "type": f"concurrent_test_{index}",
+                "agent_identifier": "simple_prompt",
                 "status": "pending",
                 "data": {"index": index}
             }
