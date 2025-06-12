@@ -112,7 +112,7 @@ EXAMPLES:
 ENVIRONMENT VARIABLES:
     Required:
         SUPABASE_URL            Supabase project URL
-        SUPABASE_KEY            Supabase anon key
+        SUPABASE_ANON_KEY       Supabase anon key
         SUPABASE_SERVICE_KEY    Supabase service key
         GOOGLE_API_KEY          Google AI API key
         JWT_SECRET              JWT secret key
@@ -227,14 +227,36 @@ check_prerequisites() {
     log "SUCCESS" "Prerequisites check passed"
 }
 
-# Load and validate environment variables
+# Validate environment and configuration
 validate_environment() {
-    if [ "$SKIP_ENV_CHECK" = true ]; then
-        log "INFO" "Skipping environment validation"
-        return
+    log "INFO" "Validating deployment environment..."
+    
+    # Check if Python and PyYAML are available for config generation
+    if ! command -v python3 &> /dev/null; then
+        log "ERROR" "Python 3 is required for configuration generation"
+        exit 1
+    fi
+    
+    if ! python3 -c "import yaml" &> /dev/null 2>&1; then
+        log "INFO" "Installing PyYAML for configuration generation..."
+        pip3 install PyYAML python-dotenv
     fi
     
     log "INFO" "Validating environment variables..."
+    
+    # Generate production configuration from config.yaml
+    if [ -f "$PROJECT_ROOT/config.yaml" ]; then
+        log "INFO" "Generating production configuration from config.yaml..."
+        cd "$PROJECT_ROOT"
+        python3 scripts/generate_config.py production
+        if [ $? -ne 0 ]; then
+            log "ERROR" "Failed to generate production configuration"
+            exit 1
+        fi
+        log "SUCCESS" "Production configuration generated successfully"
+    else
+        log "WARN" "config.yaml not found, using existing .env files"
+    fi
     
     # Load .env file if it exists
     if [ -f "$ENV_FILE" ]; then
@@ -247,7 +269,7 @@ validate_environment() {
     # Required environment variables
     local required_vars=(
         "SUPABASE_URL"
-        "SUPABASE_KEY" 
+        "SUPABASE_ANON_KEY" 
         "SUPABASE_SERVICE_KEY"
         "GOOGLE_API_KEY"
         "JWT_SECRET"
@@ -338,19 +360,114 @@ get_app_config() {
 # Check if app exists
 app_exists() {
     local app_name="$1"
-    doctl apps list --format Name --no-header | grep -q "^$app_name$"
+    doctl apps list --format "Spec.Name" --no-header | grep -q "^$app_name$"
 }
 
 # Get app ID
 get_app_id() {
     local app_name="$1"
-    doctl apps list --format ID,Name --no-header | grep "$app_name$" | awk '{print $1}'
+    doctl apps list --format "ID,Spec.Name" --no-header | grep "$app_name$" | awk '{print $1}'
+}
+
+# Check if project exists
+project_exists() {
+    local project_name="$1"
+    doctl projects list --format Name --no-header | grep -q "^$project_name$"
+}
+
+# Get project ID
+get_project_id() {
+    local project_name="$1"
+    doctl projects list --format ID,Name --no-header | grep "$project_name$" | awk '{print $1}'
+}
+
+# Ensure project exists and get project ID
+ensure_project() {
+    local project_name="$1"
+    local project_description="$2"
+    local project_purpose="${3:-Web Application}"
+    local project_environment="${4:-Production}"
+    
+    log "INFO" "Ensuring DigitalOcean project exists: $project_name" >&2
+    
+    if project_exists "$project_name"; then
+        local project_id=$(get_project_id "$project_name")
+        log "INFO" "Project already exists with ID: $project_id" >&2
+        echo "$project_id"
+    else
+        local project_id=$(create_project "$project_name" "$project_description" "$project_purpose" "$project_environment")
+        echo "$project_id"
+    fi
+}
+
+# Create DigitalOcean project
+create_project() {
+    local project_name="$1"
+    local project_description="$2"
+    local project_purpose="${3:-Web Application}"
+    local project_environment="${4:-Production}"
+    
+    log "INFO" "Creating DigitalOcean project: $project_name" >&2
+    
+    if [ "$DRY_RUN" = true ]; then
+        log "INFO" "DRY RUN: Would create project with name: $project_name" >&2
+        echo "dry-run-project-id"
+        return
+    fi
+    
+    local project_id=$(doctl projects create \
+        --name "$project_name" \
+        --description "$project_description" \
+        --purpose "$project_purpose" \
+        --environment "$project_environment" \
+        --format ID --no-header)
+    
+    if [ -z "$project_id" ]; then
+        log "ERROR" "Failed to create project" >&2
+        exit 1
+    fi
+    
+    log "SUCCESS" "Project created successfully with ID: $project_id" >&2
+    echo "$project_id"
+}
+
+# Assign app to project
+assign_app_to_project() {
+    local app_id="$1"
+    local project_id="$2"
+    
+    log "INFO" "Assigning app to project: $project_id"
+    
+    if [ "$DRY_RUN" = true ]; then
+        log "INFO" "DRY RUN: Would assign app $app_id to project $project_id"
+        return 0
+    fi
+    
+    # Create the resource URN for the app
+    local app_urn="do:app:$app_id"
+    
+    if doctl projects resources assign "$project_id" --resource "$app_urn" >/dev/null 2>&1; then
+        log "SUCCESS" "App successfully assigned to project"
+    else
+        log "WARN" "Failed to assign app to project (app may already be assigned)"
+    fi
 }
 
 # Update app.yaml with current configuration
 update_app_config() {
-    local temp_config="/tmp/app-deploy.yaml"
-    cp "$DEPLOYMENT_CONFIG" "$temp_config"
+    local temp_config="$PROJECT_ROOT/app-deploy.yaml"
+    
+    # Check if source config exists
+    if [ ! -f "$DEPLOYMENT_CONFIG" ]; then
+        log "ERROR" "Deployment config not found: $DEPLOYMENT_CONFIG"
+        exit 1
+    fi
+    
+    # Copy the config file
+    if ! cp "$DEPLOYMENT_CONFIG" "$temp_config"; then
+        log "ERROR" "Failed to copy deployment config to temp file"
+        exit 1
+    fi
     
     # Update environment if specified
     if [ -n "$ENVIRONMENT" ]; then
@@ -379,17 +496,32 @@ update_app_config() {
 create_app() {
     local app_name="$1"
     local config_file="$2"
+    local project_id="${3:-}"
     
     log "INFO" "Creating new DigitalOcean app: $app_name"
+    if [ -n "$project_id" ]; then
+        log "INFO" "Creating app in project: $project_id"
+    fi
     
     if [ "$DRY_RUN" = true ]; then
         log "INFO" "DRY RUN: Would create app with config: $config_file"
+        if [ -n "$project_id" ]; then
+            log "INFO" "DRY RUN: Would create app in project: $project_id"
+        fi
+        echo "dry-run-app-id"
         return
     fi
     
     show_progress "Creating app" 5
     
-    local app_id=$(doctl apps create --spec "$config_file" --format ID --no-header)
+    # Build the doctl command with optional project-id
+    local create_cmd="doctl apps create --spec \"$config_file\" --format ID --no-header"
+    if [ -n "$project_id" ]; then
+        create_cmd="$create_cmd --project-id \"$project_id\""
+    fi
+    
+    local app_id
+    app_id=$(eval "$create_cmd")
     
     if [ -z "$app_id" ]; then
         log "ERROR" "Failed to create app"
@@ -397,11 +529,15 @@ create_app() {
     fi
     
     log "SUCCESS" "App created successfully with ID: $app_id"
+    if [ -n "$project_id" ]; then
+        log "SUCCESS" "App automatically assigned to project: $project_id"
+    fi
     
     # Wait for initial deployment
     wait_for_deployment "$app_id"
     
-    return 0
+    # Return the app ID
+    echo "$app_id"
 }
 
 # Update existing app
@@ -475,7 +611,7 @@ show_deployment_logs() {
     local component="${2:-backend}"
     
     log "INFO" "Showing recent logs for component: $component"
-    doctl apps logs "$app_id" --component "$component" --tail 50
+    doctl apps logs "$app_id" "$component" --tail 50
 }
 
 # Get app status
@@ -492,11 +628,11 @@ get_app_status() {
     log "INFO" "App Status for: $app_name (ID: $app_id)"
     
     # Get app details
-    doctl apps get "$app_id" --format Name,DefaultIngress,UpdatedAt,Phase
+    doctl apps get "$app_id" --format "Spec.Name,DefaultIngress,Updated"
     
     # Get deployment status
     log "INFO" "Recent Deployments:"
-    doctl apps list-deployments "$app_id" --format ID,Phase,CreatedAt | head -5
+    doctl apps list-deployments "$app_id" --format "ID,Phase,Created" | head -5
     
     # Test health endpoints
     local app_url=$(doctl apps get "$app_id" --format DefaultIngress --no-header)
@@ -529,7 +665,7 @@ rollback_deployment() {
     local app_id=$(get_app_id "$app_name")
     
     log "INFO" "Available deployments for rollback:"
-    doctl apps list-deployments "$app_id" --format ID,Phase,CreatedAt | head -10
+    doctl apps list-deployments "$app_id" --format "ID,Phase,Created" | head -10
     
     echo -n "Enter deployment ID to rollback to: "
     read -r deployment_id
@@ -607,6 +743,22 @@ validate_config() {
     log "SUCCESS" "Configuration validation completed"
 }
 
+# Get project configuration from config.yaml
+get_project_config() {
+    if [ -f "$PROJECT_ROOT/config.yaml" ]; then
+        # Load project configuration using python to parse YAML
+        python3 -c "
+import yaml
+with open('$PROJECT_ROOT/config.yaml', 'r') as f:
+    config = yaml.safe_load(f)
+    project_config = config.get('deployment', {}).get('digital_ocean', {}).get('project', {})
+    print(f\"{project_config.get('name', 'AI Agent Platform Demo')}|{project_config.get('description', 'AI Agent Platform deployment')}|{project_config.get('purpose', 'Web Application')}|{project_config.get('environment', 'Production')}\")
+" 2>/dev/null || echo "AI Agent Platform Demo|AI Agent Platform deployment|Web Application|Production"
+    else
+        echo "AI Agent Platform Demo|AI Agent Platform deployment|Web Application|Production"
+    fi
+}
+
 # Main deployment function
 deploy_app() {
     local app_name=$(get_app_config)
@@ -615,25 +767,40 @@ deploy_app() {
     log "INFO" "Environment: ${ENVIRONMENT:-default}"
     log "INFO" "Domain: ${DOMAIN:-default}"
     
+    # Load project configuration
+    local project_config=$(get_project_config)
+    IFS='|' read -r project_name project_description project_purpose project_environment <<< "$project_config"
+    
+    # Ensure project exists first
+    log "INFO" "Managing DigitalOcean project..."
+    local project_id=$(ensure_project "$project_name" "$project_description" "$project_purpose" "$project_environment")
+    
     # Update configuration
     local config_file=$(update_app_config)
     
     # Check if app exists
     if app_exists "$app_name"; then
+        local app_id=$(get_app_id "$app_name")
         if [ "$FORCE_CREATE" = true ]; then
             log "WARN" "Force create requested - destroying existing app"
             destroy_app "$app_name"
-            create_app "$app_name" "$config_file"
+            app_id=$(create_app "$app_name" "$config_file" "$project_id")
         else
-            local app_id=$(get_app_id "$app_name")
             update_app "$app_id" "$config_file"
+            # For existing apps, try to assign to project (may already be assigned)
+            assign_app_to_project "$app_id" "$project_id"
         fi
     else
-        create_app "$app_name" "$config_file"
+        # Create new app directly in the project
+        local app_id=$(create_app "$app_name" "$config_file" "$project_id")
     fi
     
-    # Show final status
-    get_app_status "$app_name"
+    # Show final status (skip in dry run mode)
+    if [ "$DRY_RUN" != true ]; then
+        get_app_status "$app_name"
+    else
+        log "INFO" "DRY RUN: Deployment simulation completed"
+    fi
     
     # Cleanup temp config
     rm -f "$config_file"

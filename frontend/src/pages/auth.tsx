@@ -29,14 +29,16 @@ export const AuthPage: React.FC = () => {
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold tracking-tight">AI Agent Platform</h1>
-          <p className="text-muted-foreground">Sign in to manage your AI agents and jobs</p>
+          <p className="text-muted-foreground">
+            Sign in to manage your AI agents and jobs
+          </p>
           <div className="inline-flex items-center gap-2 mt-4">
             <Badge variant="secondary" className="text-xs">
-              Manual User Management
+              Demo Environment
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground">
-            Users must be added manually via Supabase dashboard
+            Demo with manual user management
           </p>
         </div>
 

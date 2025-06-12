@@ -1,0 +1,177 @@
+# =============================================================================
+# AI Agent Platform - Centralized Configuration Example
+# =============================================================================
+# Copy this file to config.yaml and update with your actual values
+# Never commit config.yaml with real values to version control!
+# =============================================================================
+
+# Project metadata
+project:
+  name: "AI Agent Platform"
+  version: "1.0.0"
+  description: "Production-ready AI Agent Development Platform"
+
+# Environment-specific settings
+environments:
+  development:
+    debug: true
+    cors_origins:
+      - "http://localhost:3000"
+      - "http://localhost:5173"
+      - "http://127.0.0.1:3000"
+    api_base_url: "http://localhost:8000"
+    frontend_url: "http://localhost:3000"
+    
+  production:
+    debug: false
+    cors_origins:
+      - "https://yourdomain.com"
+      - "https://www.yourdomain.com"
+      - "https://your-app.yourdomain.com"
+    api_base_url: "https://your-app.yourdomain.com"
+    frontend_url: "https://yourdomain.com"
+
+# Server configuration
+server:
+  host: "0.0.0.0"
+  port:
+    development: 8000
+    production: 8080
+  reload: true  # Only used in development
+
+# Database configuration (Supabase)
+database:
+  supabase_url: "https://your-project-id.supabase.co"
+  supabase_anon_key: "your-supabase-anon-key"
+  supabase_service_key: "your-supabase-service-role-key"
+
+# Authentication & Security
+auth:
+  jwt_secret: "your-32-character-random-jwt-secret-key"  # Generate with: openssl rand -base64 32
+  jwt_algorithm: "HS256"
+  access_token_expire_minutes: 30
+  api_rate_limit: "100/minute"
+  trusted_hosts:
+    - "localhost"
+    - "127.0.0.1"
+    - "yourdomain.com"
+    - "www.yourdomain.com"
+    - "your-app.yourdomain.com"
+  secure_cookies:
+    development: false
+    production: true
+  max_request_size: 16777216
+
+# AI Provider Configuration
+ai_providers:
+  default_provider: "google"
+  
+  google:
+    api_key: "your-google-ai-api-key"  # Get from https://aistudio.google.com/app/apikey
+    default_model: "gemini-2.0-flash"
+    use_vertex_ai: false
+    
+  openai:
+    api_key: ""  # Set if using OpenAI - get from https://platform.openai.com/api-keys
+    default_model: "gpt-4o-mini"
+    
+  anthropic:
+    api_key: ""  # Set if using Anthropic - get from https://console.anthropic.com/
+    default_model: "claude-3-haiku-20240307"
+    
+  grok:
+    api_key: ""  # Set if using Grok - get from https://console.x.ai/
+    default_model: "grok-beta"
+    base_url: "https://api.x.ai/v1"
+    
+  deepseek:
+    api_key: ""  # Set if using DeepSeek - get from https://platform.deepseek.com/
+    default_model: "deepseek-chat"
+    base_url: "https://api.deepseek.com"
+    
+  llama:
+    api_key: ""  # Set if using Meta Llama - get from https://api.together.xyz/
+    default_model: "llama3.2-90b-vision-instruct"
+    base_url: "https://api.together.xyz/v1"
+    api_provider: "together"
+
+# Job Processing Configuration
+jobs:
+  max_concurrent: 10
+  timeout: 3600
+  retry_attempts: 3
+  queue_max_size: 1000
+  cleanup_after_seconds: 86400  # 24 hours
+  default_agent_timeout: 300
+
+# CORS Configuration
+cors:
+  allow_credentials: true
+  max_age: 86400
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  rotation: true
+  max_size: "10MB"
+  backup_count: 5
+
+# Frontend Configuration
+frontend:
+  features:
+    dev_tools: true
+    performance_monitoring: false
+    error_details: true
+    api_mocking: false
+    analytics: false
+    
+  ui:
+    default_theme: "system"
+    persist_theme: true
+    default_locale: "en"
+    
+  polling:
+    job_status_interval: 5000
+    max_attempts: 120
+    enable_realtime: true
+    
+  caching:
+    duration: 300000
+    enable_service_worker: false
+    
+  build:
+    target: "es2020"
+    sourcemap:
+      development: true
+      production: false
+    analyze_bundle: false
+    
+  dev:
+    port: 3000
+    hmr: true
+    open_browser: true
+    https: false
+
+# Deployment Configuration
+deployment:
+  digital_ocean:
+    app_name: "your-app-name"
+    region: "nyc"
+    domain: "yourdomain.com"
+    backend_instance: "basic-xxs"
+    frontend_instance: "basic-xxs"
+    
+    # Source control configuration
+    repository:
+      url: "your-github-username/your-repo-name"  # GitHub repository in format: username/repo
+      branch: "main"  # Git branch to deploy from
+      deploy_on_push: true  # Automatically deploy when code is pushed
+    
+    health_check:
+      path: "/health"
+      initial_delay: 30
+      period: 10
+      timeout: 5
+      success_threshold: 1
+      failure_threshold: 3 

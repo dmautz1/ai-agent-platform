@@ -8,7 +8,11 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, Loader2 } from 'lucide-react';
 
-export const SignInForm: React.FC = () => {
+interface SignInFormProps {
+  // No additional props needed for manual user management
+}
+
+export const SignInForm: React.FC<SignInFormProps> = () => {
   const { signIn } = useAuth();
   const [formData, setFormData] = useState<LoginRequest>({
     email: '',
@@ -48,7 +52,7 @@ export const SignInForm: React.FC = () => {
           Enter your credentials to access your account
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
             <Alert variant="destructive">

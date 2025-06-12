@@ -1327,8 +1327,10 @@ async def create_job(
             import uuid
             job_id = str(uuid.uuid4())
             
-            # Create job in database with agent_identifier
+            # Get database operations
             db_ops = get_database_operations()
+            
+            # Create job in database with agent_identifier
             job_data = {
                 "id": job_id,
                 "user_id": user["id"],

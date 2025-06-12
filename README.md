@@ -45,8 +45,9 @@ AI Agent Platform is a comprehensive framework for building production-ready AI 
 git clone https://github.com/dmautz1/ai-agent-platform
 cd ai-agent-platform
 
-# Install root dependencies (for testing and E2E)
+# Install dependencies
 npm install
+pip install -r requirements.txt
 
 # Install frontend dependencies
 cd frontend
@@ -61,39 +62,58 @@ pip install -r requirements.txt
 cd ..
 ```
 
-### 2. Set Up Environment Variables
+### 2. Set Up Centralized Configuration
 ```bash
-# Backend environment setup
-cp backend/env.example backend/.env
+# Copy the example configuration
+cp config.yaml.example config.yaml
 
-# Frontend environment setup  
-cp frontend/env.local.example frontend/.env.local
+# Edit config.yaml with your credentials
+nano config.yaml  # or use your preferred editor
 ```
 
-**Edit `backend/.env` with your credentials:**
-- `SUPABASE_URL` - Your Supabase project URL
-- `SUPABASE_KEY` - Your Supabase anon key
-- `SUPABASE_SERVICE_KEY` - Your Supabase service role key
+**Edit `config.yaml` with your credentials:**
+
+**Database Configuration (Supabase):**
+```yaml
+database:
+  supabase_url: "https://your-project-id.supabase.co"
+  supabase_anon_key: "your-supabase-anon-key"
+  supabase_service_key: "your-supabase-service-role-key"
+```
 
 **AI Provider Setup (choose one or more):**
-- `DEFAULT_LLM_PROVIDER=google` - Default AI provider to use (google|openai|anthropic|grok|deepseek|llama)
-- `GOOGLE_API_KEY` - Your Google AI Studio API key (for Gemini models)
-- `OPENAI_API_KEY` - Your OpenAI API key (for GPT models)
-- `GROK_API_KEY` - Your Grok (xAI) API key (for Grok models with real-time data)
-- `ANTHROPIC_API_KEY` - Your Anthropic API key (for Claude models with advanced reasoning)
-- `DEEPSEEK_API_KEY` - Your DeepSeek API key (for DeepSeek models with competitive performance)
-- `LLAMA_API_KEY` - Your Meta Llama API key (for Llama models via Together AI or other providers)
+```yaml
+ai_providers:
+  default_provider: "google"  # Choose: google|openai|anthropic|grok|deepseek|llama
+  
+  google:
+    api_key: "your-google-api-key"  # Get from https://aistudio.google.com
+  openai:
+    api_key: "your-openai-api-key"  # Get from https://platform.openai.com
+  # ... configure other providers as needed
+```
 
-**Edit `frontend/.env.local` with your credentials:**
-- `VITE_API_BASE_URL=http://localhost:8000`
-- `VITE_SUPABASE_URL` - Same as backend SUPABASE_URL
-- `VITE_SUPABASE_ANON_KEY` - Same as backend SUPABASE_KEY
+**Security Configuration:**
+```yaml
+auth:
+  jwt_secret: "your-32-character-random-jwt-secret"  # Generate with: openssl rand -base64 32
+```
 
-### 3. Set Up Database
+### 3. Generate Environment Files
+```bash
+# Generate development configuration files
+make config-dev
+# This creates: .env, backend/.env, frontend/.env.local, .do/app.yaml
+
+# Or use the script directly:
+python scripts/generate_config.py development
+```
+
+### 4. Set Up Database
 In your Supabase dashboard, go to SQL Editor and run these migration files in order:
 1. Copy/paste content from: `supabase/migrations/supabase_setup.sql`
 
-### 4. Start Development Servers
+### 5. Start Development Servers
 ```bash
 # Terminal 1: Start Backend (from backend directory)
 cd backend
@@ -105,7 +125,7 @@ cd frontend
 npm run dev
 ```
 
-### 5. Create Your First User
+### 6. Create Your First User
 ```bash
 # From the backend directory
 cd backend
@@ -389,3 +409,34 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **[Agent Development](docs/development/agent-development.md)** - Build custom agents
 - **[API Reference](docs/development/api-reference.md)** - Complete API documentation
 - **[Testing Guide](docs/development/testing.md)** - Testing strategies and best practices
+
+### Configuration Management
+
+This project uses a **centralized configuration system** to manage all environment variables from a single source.
+
+#### Single Source of Truth
+All configuration is managed from `config.yaml`:
+- Database credentials
+- AI provider API keys  
+- Security settings
+- Environment-specific settings (dev/prod)
+- Deployment configuration
+
+#### Available Commands
+```bash
+make help           # Show available commands
+make config-dev     # Generate development config files
+make config-prod    # Generate production config files
+make config-check   # Validate configuration
+make deploy         # Deploy to production
+make clean          # Remove generated files
+make status         # Show configuration status
+```
+
+#### Benefits
+- **No Duplication** - Define variables once, use everywhere
+- **Environment Separation** - Clear dev/production settings
+- **Deployment Ready** - Auto-generates all necessary files
+- **Version Control Safe** - Real config.yaml is gitignored
+
+**→ [Complete Configuration Guide](CONFIG.md)** - Detailed setup and management

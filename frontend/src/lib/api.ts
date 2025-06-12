@@ -21,8 +21,6 @@ import type {
   User,
   LoginRequest,
   LoginResponse,
-  RegisterRequest,
-  RegisterResponse,
   AuthTokens,
   
   // Agent types
@@ -363,15 +361,6 @@ export const api = {
       const response = await apiClient.post<ApiResponse<LoginResponse>>('/auth/login', credentials);
       if (!response.data.data) {
         throw new Error('Login failed');
-      }
-      return response.data.data;
-    },
-
-    // Register
-    register: async (userData: RegisterRequest): Promise<RegisterResponse> => {
-      const response = await apiClient.post<ApiResponse<RegisterResponse>>('/auth/register', userData);
-      if (!response.data.data) {
-        throw new Error('Registration failed');
       }
       return response.data.data;
     },

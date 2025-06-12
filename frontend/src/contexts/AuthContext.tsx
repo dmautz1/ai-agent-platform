@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import type { User, AuthTokens, LoginRequest, RegisterRequest } from '@/lib/models';
+import type { User, AuthTokens, LoginRequest } from '@/lib/models';
 
 interface AuthState {
   user: User | null;
@@ -12,7 +12,6 @@ interface AuthState {
 
 interface AuthContextType extends AuthState {
   signIn: (credentials: LoginRequest) => Promise<{ user: User; tokens: AuthTokens }>;
-  signUp: (userData: RegisterRequest) => Promise<{ user: User; tokens: AuthTokens }>;
   signOut: () => Promise<void>;
   refreshAuth: () => Promise<void>;
 }
@@ -81,81 +80,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error: unknown) {
       console.error('Sign in error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Sign in failed';
-      throw new Error(errorMessage);
-    }
-  };
-
-  const signUp = async (userData: RegisterRequest): Promise<{ user: User; tokens: AuthTokens }> => {
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email: userData.email,
-        password: userData.password,
-        options: {
-          data: {
-            name: userData.name,
-            role: 'user',
-          },
-        },
-      });
-
-      if (error) throw error;
-
-      if (!data.user) {
-        throw new Error('Sign up failed - no user returned');
-      }
-
-      // For sign up, user might need email confirmation
-      // Handle both confirmed and unconfirmed cases
-      const user: User = {
-        id: data.user.id,
-        email: data.user.email!,
-        name: userData.name || data.user.email!.split('@')[0],
-        role: 'user',
-        is_active: !!data.user.email_confirmed_at,
-        created_at: data.user.created_at,
-        updated_at: data.user.updated_at || data.user.created_at,
-      };
-
-      let tokens: AuthTokens | undefined;
-
-      if (data.session) {
-        tokens = {
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-          token_type: data.session.token_type || 'bearer',
-          expires_in: data.session.expires_in || 3600,
-        };
-
-        setAuthState({
-          user,
-          loading: false,
-          session: data.session,
-          tokens,
-        });
-
-        // Store token in localStorage for API calls
-        localStorage.setItem('auth_token', data.session.access_token);
-      } else {
-        // User needs email confirmation
-        setAuthState({
-          user: null,
-          loading: false,
-          session: null,
-          tokens: undefined,
-        });
-      }
-
-      return { 
-        user, 
-        tokens: tokens || {
-          access_token: '',
-          token_type: 'bearer',
-          expires_in: 0,
-        }
-      };
-    } catch (error: unknown) {
-      console.error('Sign up error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Sign up failed';
       throw new Error(errorMessage);
     }
   };
@@ -293,7 +217,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const value: AuthContextType = {
     ...authState,
     signIn,
-    signUp,
     signOut,
     refreshAuth,
   };

@@ -2,29 +2,62 @@
 
 > **Complete Guide to Deploying AI Agent Platform** - From setup to production
 
-This guide walks you through deploying the AI Agent Platform to DigitalOcean App Platform using the included configuration file.
+This guide walks you through deploying the AI Agent Platform to DigitalOcean App Platform using the **centralized configuration system**.
 
-## Quick Start with Deployment Script
+## 🚀 Quick Start with Centralized Configuration
 
-**⚡ For automated deployment, use our unified deployment script:**
+**⚡ The platform uses a single `config.yaml` file for all configuration:**
 
 ```bash
-# 1. Set up environment variables
-cp .env.example .env
-# Edit .env with your credentials
+# 1. Set up centralized configuration
+cp config.yaml.example config.yaml
+# Edit config.yaml with your credentials
 
-# 2. Install and authenticate doctl
+# 2. Install configuration dependencies  
+pip install -r requirements.txt
+
+# 3. Install and authenticate doctl
 brew install doctl  # or appropriate installation for your OS
 doctl auth init
 
-# 3. Deploy to production
+# 4. Deploy to production (automatically generates config)
+make deploy
+# OR
 ./scripts/deploy.sh deploy --env production --domain yourdomain.com
 
-# 4. Check status
+# 5. Check status
 ./scripts/deploy.sh status
 ```
 
-For detailed script usage, see: [scripts/README.md](scripts/README.md)
+## 🔧 Configuration Management
+
+### Centralized Configuration Benefits
+
+- **Single Source of Truth** - All variables defined once in `config.yaml`
+- **No Duplication** - Variables automatically generated for each component
+- **Environment Separation** - Clear development vs production settings
+- **Automatic Generation** - Script generates all necessary files
+- **Deployment Integration** - Deploy script automatically generates production config
+
+### Configuration Files Generated
+
+From `config.yaml`, the system generates:
+- **Root `.env`** - Used by deployment scripts
+- **`backend/.env`** - FastAPI application configuration
+- **`frontend/.env.local`** - React/Vite application configuration  
+- `.do/app.yaml` - Digital Ocean deployment configuration
+
+### Available Commands
+
+```bash
+make help           # Show available configuration commands
+make config-dev     # Generate development configuration files
+make config-prod    # Generate production configuration files  
+make config-check   # Validate configuration without generating files
+make deploy         # Deploy to production (auto-generates prod config)
+make clean          # Remove generated configuration files
+make status         # Show which configuration files exist
+```
 
 ---
 
@@ -36,8 +69,7 @@ For manual deployment or advanced configuration, follow the detailed steps below
 
 - [Prerequisites](#prerequisites)
 - [Pre-Deployment Setup](#pre-deployment-setup)
-- [Deployment Configuration](#deployment-configuration)
-- [Environment Variables Setup](#environment-variables-setup)
+- [Configuration Setup](#configuration-setup)
 - [Deployment Process](#deployment-process)
 - [Post-Deployment Configuration](#post-deployment-configuration)
 - [Monitoring and Maintenance](#monitoring-and-maintenance)
@@ -50,19 +82,18 @@ For manual deployment or advanced configuration, follow the detailed steps below
 - **DigitalOcean Account** with App Platform access
 - **GitHub Account** with your repository
 - **Supabase Account** with your database project
-- **Google AI Studio Account** (or Google Cloud) for AI functionality
+- **AI Provider Account** (Google AI Studio, OpenAI, Anthropic, etc.)
 
-### Required Knowledge
-- Basic understanding of environment variables
-- Familiarity with GitHub repositories
-- Basic knowledge of domain management (if using custom domain)
+### Required Tools
+- **Python 3.8+** for configuration generation
+- **Node.js 20+** for frontend build
+- **Git** for repository management
+- **doctl CLI** for DigitalOcean deployment
 
 ### Cost Estimate
 - **Backend Service**: ~$5/month (Basic plan)
 - **Frontend Service**: ~$5/month (Basic plan)
-- **Worker Service**: ~$5/month (Basic plan)
-- **Domain/SSL**: Free with DigitalOcean
-- **Total**: ~$15/month for production-ready deployment
+- **Total**: ~$10/month for production-ready deployment
 
 ## Pre-Deployment Setup
 
@@ -74,9 +105,14 @@ For manual deployment or advanced configuration, follow the detailed steps below
    cd ai-agent-platform
    ```
 
-2. **Push to Your GitHub Repository**:
+2. **Install Configuration Dependencies**:
    ```bash
-   git remote set-url origin https://github.com/your-username/ai-agent-framwwork.git
+   pip install -r requirements.txt
+   ```
+
+3. **Push to Your GitHub Repository**:
+   ```bash
+   git remote set-url origin https://github.com/your-username/ai-agent-platform.git
    git push -u origin main
    ```
 
@@ -89,7 +125,7 @@ For manual deployment or advanced configuration, follow the detailed steps below
 
 2. **Run Database Migrations**:
    - Go to **SQL Editor** in Supabase dashboard
-   - Copy content from `supabase/migrations/001_create_jobs_table.sql`
+   - Copy content from `supabase/migrations/supabase_setup.sql`
    - Run the SQL to create tables
 
 3. **Get Database Credentials**:
@@ -98,147 +134,129 @@ For manual deployment or advanced configuration, follow the detailed steps below
    - Copy **anon public key**
    - Copy **service_role key**
 
-### 3. Set Up Google AI
+### 3. Set Up AI Providers
 
-Choose one option:
+Choose one or more AI providers:
 
-#### Option A: Google AI Studio (Recommended)
+#### Google AI Studio (Recommended)
 1. Visit [Google AI Studio](https://aistudio.google.com)
 2. Create an API key
 3. Copy the API key
 
-#### Option B: Google Cloud Vertex AI
-1. Create Google Cloud project
-2. Enable Vertex AI API
-3. Set up service account
-4. Download credentials
+#### Other Providers
+- **OpenAI**: [Platform](https://platform.openai.com) - GPT models
+- **Anthropic**: [Console](https://console.anthropic.com) - Claude models
+- **Grok**: [Console](https://console.x.ai) - Grok models with real-time data
+- **DeepSeek**: [Platform](https://platform.deepseek.com) - Cost-effective models
+- **Meta Llama**: [Together AI](https://api.together.xyz) - Open-source models
 
-### 4. Prepare Domain (Optional)
+## Configuration Setup
 
-If using a custom domain:
-1. Register domain or use existing domain
-2. Update DNS to point to DigitalOcean (done after deployment)
+### 1. Create Configuration File
 
-## Deployment Configuration
-
-The deployment uses the provided `.do/app.yaml` configuration file. Update the following placeholders:
-
-### 1. Update Repository Information
-
-Replace in `.do/app.yaml`:
-```yaml
-github:
-  repo: your-github-username/ai-agent-platform  # Replace with your repo
-  branch: main
+```bash
+# Copy the example configuration
+cp config.yaml.example config.yaml
 ```
 
-### 2. Update Domain Configuration
+### 2. Edit Centralized Configuration
 
-Replace in `.do/app.yaml`:
+Edit `config.yaml` with your specific values:
+
+#### Project Settings
 ```yaml
-domains:
-- domain: your-domain.com  # Replace with your domain
-  type: PRIMARY
-  wildcard: false
-  zone: your-domain.com    # Replace with your domain
+project:
+  name: "Your App Name"
+  version: "1.0.0"
+
+deployment:
+  digital_ocean:
+    app_name: "your-app-name"
+    domain: "yourdomain.com"  # Optional: remove for DigitalOcean subdomain
+    region: "nyc"  # Choose: nyc1, nyc3, ams3, sfo3, sgp1, lon1, fra1, tor1, blr1
 ```
 
-If you don't have a domain, remove the `domains` section entirely to use the default DigitalOcean URL.
-
-## Environment Variables Setup
-
-### Backend Environment Variables
-
-Update these in the DigitalOcean App Platform dashboard or in `.do/app.yaml`:
-
-#### Required Variables
+#### Database Configuration
 ```yaml
-# Database (Replace with your Supabase credentials)
-- key: SUPABASE_URL
-  value: "https://your-project-id.supabase.co"
-  type: SECRET
-- key: SUPABASE_KEY
-  value: "your-supabase-anon-key"
-  type: SECRET
-- key: SUPABASE_SERVICE_KEY
-  value: "your-supabase-service-key"
-  type: SECRET
-
-# Authentication (Generate a strong secret)
-- key: JWT_SECRET
-  value: "your-32-character-random-string"
-  type: SECRET
-
-# Google AI (Your API key)
-- key: GOOGLE_API_KEY
-  value: "your-google-ai-api-key"
-  type: SECRET
+database:
+  supabase_url: "https://your-project-id.supabase.co"
+  supabase_anon_key: "your-supabase-anon-key"
+  supabase_service_key: "your-supabase-service-role-key"
 ```
 
-#### Optional Variables (can keep defaults)
+#### Security Configuration
 ```yaml
-# Application Settings
-- key: APP_NAME
-  value: "AI Agent Platform API"
-- key: ENVIRONMENT
-  value: "production"
-- key: LOG_LEVEL
-  value: "INFO"
-
-# Performance Settings
-- key: MAX_CONCURRENT_JOBS
-  value: "10"
-- key: JOB_TIMEOUT
-  value: "3600"
+auth:
+  jwt_secret: "your-32-character-random-jwt-secret"  # Generate with: openssl rand -base64 32
 ```
 
-### Frontend Environment Variables
-
+#### AI Provider Configuration
 ```yaml
-# API Configuration
-- key: VITE_API_BASE_URL
-  value: "https://your-domain.com"  # Or your DigitalOcean app URL
+ai_providers:
+  default_provider: "google"  # Choose your primary provider
+  
+  google:
+    api_key: "your-google-ai-api-key"
+  openai:
+    api_key: "your-openai-api-key"  # Optional
+  anthropic:
+    api_key: "your-anthropic-api-key"  # Optional
+  # ... configure other providers as needed
+```
 
-# Database (Same as backend)
-- key: VITE_SUPABASE_URL
-  value: "https://your-project-id.supabase.co"
-  type: SECRET
-- key: VITE_SUPABASE_ANON_KEY
-  value: "your-supabase-anon-key"
-  type: SECRET
+#### Environment-Specific Settings
+```yaml
+environments:
+  production:
+    debug: false
+    cors_origins:
+      - "https://yourdomain.com"
+      - "https://www.yourdomain.com"
+    api_base_url: "https://yourdomain.com"
+    frontend_url: "https://yourdomain.com"
+```
+
+### 3. Generate Deployment Configuration
+
+```bash
+# Generate production configuration files
+make config-prod
+
+# Verify generated files
+make status
+```
+
+This creates:
+- `.env` - Root environment variables
+- `backend/.env` - Backend configuration
+- `frontend/.env.local` - Frontend configuration  
+- `.do/app.yaml` - DigitalOcean deployment configuration
+
+### 4. Validate Configuration
+
+```bash
+# Check configuration without generating files
+make config-check
+
+# Validate specific environment
+python scripts/generate_config.py production --dry-run
 ```
 
 ## Deployment Process
 
-### Method 1: Using DigitalOcean Dashboard
+### Option 1: Automated Deployment (Recommended)
 
-1. **Create App**:
-   - Go to [DigitalOcean Apps](https://cloud.digitalocean.com/apps)
-   - Click "Create App"
-   - Choose "GitHub" as source
+```bash
+# Deploy with automatic configuration generation
+make deploy
 
-2. **Connect Repository**:
-   - Authorize DigitalOcean to access your GitHub
-   - Select your repository: `your-username/ai-agent-platform`
-   - Choose branch: `main`
+# Or with specific options
+./scripts/deploy.sh deploy --env production --domain yourdomain.com
+```
 
-3. **Upload Configuration**:
-   - In the app creation flow, choose "Use existing app spec"
-   - Upload the `.do/app.yaml` file
-   - Review the configuration
+### Option 2: Manual Deployment
 
-4. **Configure Environment Variables**:
-   - Go to each service (backend, frontend, worker)
-   - Add environment variables as specified above
-   - Mark sensitive variables as "SECRET"
-
-5. **Deploy**:
-   - Click "Create Resources"
-   - Wait for deployment (~5-10 minutes)
-
-### Method 2: Using doctl CLI
-
-1. **Install doctl**:
+1. **Install DigitalOcean CLI**:
    ```bash
    # macOS
    brew install doctl
@@ -246,23 +264,34 @@ Update these in the DigitalOcean App Platform dashboard or in `.do/app.yaml`:
    # Linux
    snap install doctl
    
-   # Or download from: https://github.com/digitalocean/doctl/releases
+   # Windows
+   # Download from: https://github.com/digitalocean/doctl/releases
    ```
 
-2. **Authenticate**:
+2. **Authenticate with DigitalOcean**:
    ```bash
    doctl auth init
    ```
 
-3. **Deploy App**:
+3. **Deploy the Application**:
    ```bash
+   # Create new app
    doctl apps create --spec .do/app.yaml
-   ```
-
-4. **Update Environment Variables**:
-   ```bash
+   
+   # Or update existing app
    doctl apps update YOUR_APP_ID --spec .do/app.yaml
    ```
+
+### 3. Monitor Deployment
+
+```bash
+# Check deployment status
+./scripts/deploy.sh status
+
+# View logs
+./scripts/deploy.sh logs backend
+./scripts/deploy.sh logs frontend
+```
 
 ## Post-Deployment Configuration
 

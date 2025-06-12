@@ -70,18 +70,6 @@ export interface LoginResponse {
   tokens: AuthTokens;
 }
 
-export interface RegisterRequest {
-  email: string;
-  password: string;
-  name?: string;
-  terms_accepted: boolean;
-}
-
-export interface RegisterResponse {
-  user: User;
-  tokens: AuthTokens;
-}
-
 export interface RefreshTokenRequest {
   refresh_token: string;
 }

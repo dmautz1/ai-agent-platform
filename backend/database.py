@@ -397,7 +397,7 @@ class DatabaseClient:
             logger.error("Job statistics retrieval failed", exception=e, user_id=user_id)
             db_logger.log_query("SELECT", "jobs", duration, error=str(e))
             raise
-    
+
     async def cleanup_old_jobs(self, older_than_days: int = 30) -> int:
         """
         Clean up old completed jobs to manage database size.

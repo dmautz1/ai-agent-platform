@@ -1,283 +1,362 @@
-# Deployment Scripts
+# Deployment Scripts Documentation
 
-> **Automated deployment tools** - Scripts for deploying to DigitalOcean and other platforms
+> **Automated Deployment Tools** - Streamlined deployment with centralized configuration
 
-## Overview
+This document covers the deployment automation tools and scripts included with the AI Agent Platform.
 
-The `scripts/` directory contains automated deployment tools for the AI Agent Platform:
+## 🚀 Overview
 
-- **`deploy.sh`** - Unified deployment script for DigitalOcean App Platform with comprehensive automation, error handling, and monitoring
+The platform includes a comprehensive deployment system with:
 
-## Quick Start
+- **Centralized Configuration** - Single `config.yaml` file for all settings
+- **Automated Deployment** - One-command deployment to DigitalOcean
+- **Environment Management** - Separate dev/production configurations
+- **Configuration Generation** - Auto-generates all necessary files
+- **Health Monitoring** - Built-in deployment monitoring and logging
 
-### Prerequisites
+## 📋 Available Tools
 
-1. **Install doctl CLI**:
-   ```bash
-   # macOS
-   brew install doctl
-   
-   # Linux
-   snap install doctl
-   
-   # Or download from: https://github.com/digitalocean/doctl/releases
-   ```
+### 1. Configuration Generator (`scripts/generate_config.py`)
 
-2. **Authenticate with DigitalOcean**:
-   ```bash
-   doctl auth init
-   ```
-
-3. **Set up environment variables** (create `.env` file in project root):
-   ```bash
-   SUPABASE_URL=https://your-project.supabase.co
-   SUPABASE_KEY=your-supabase-anon-key
-   SUPABASE_SERVICE_KEY=your-supabase-service-key
-   GOOGLE_API_KEY=your-google-ai-api-key
-   JWT_SECRET=your-32-character-secret
-   GITHUB_REPO=your-username/ai-agent-platform
-   ```
-
-### Basic Deployment
+Generates all configuration files from the centralized `config.yaml`:
 
 ```bash
-# Deploy to production with custom domain
-./scripts/deploy.sh deploy --env production --domain yourdomain.com
+# Generate development configuration
+python scripts/generate_config.py development
 
-# Deploy to staging
-./scripts/deploy.sh deploy --env staging
+# Generate production configuration  
+python scripts/generate_config.py production
 
-# Create new app (force creation)
-./scripts/deploy.sh create --name my-ai-agent --env production
+# Validate configuration without generating files
+python scripts/generate_config.py development --dry-run
+
+# Show help
+python scripts/generate_config.py --help
 ```
 
-## Deployment Script Usage
+**Generated Files:**
+- `.env` - Root environment variables for deployment scripts
+- `backend/.env` - FastAPI application configuration
+- `frontend/.env.local` - React/Vite application configuration
+- `.do/app.yaml` - DigitalOcean App Platform deployment specification
 
-### Commands
+### 2. Deployment Script (`scripts/deploy.sh`)
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `deploy` | Deploy or update application (default) | `./scripts/deploy.sh deploy` |
-| `create` | Force create new app | `./scripts/deploy.sh create --name new-app` |
-| `update` | Update existing app only | `./scripts/deploy.sh update` |
-| `status` | Check deployment status | `./scripts/deploy.sh status` |
-| `logs` | View application logs | `./scripts/deploy.sh logs backend` |
-| `rollback` | Rollback deployment | `./scripts/deploy.sh rollback` |
-| `destroy` | Destroy application | `./scripts/deploy.sh destroy` |
-| `validate` | Validate configuration | `./scripts/deploy.sh validate` |
-
-### Options
-
-| Option | Description | Example |
-|--------|-------------|---------|
-| `-n, --name NAME` | App name | `--name my-app` |
-| `-e, --env ENV` | Environment (development\|staging\|production) | `--env production` |
-| `-d, --domain DOMAIN` | Custom domain | `--domain yourdomain.com` |
-| `--force-create` | Force create new app | `--force-create` |
-| `--skip-build` | Skip frontend build | `--skip-build` |
-| `--skip-env-check` | Skip environment validation | `--skip-env-check` |
-| `--dry-run` | Show actions without executing | `--dry-run` |
-| `-v, --verbose` | Enable verbose logging | `--verbose` |
-| `-h, --help` | Show help message | `--help` |
-
-## Deployment Workflows
-
-### Production Deployment
+Unified deployment script with comprehensive automation:
 
 ```bash
-# Full production deployment with custom domain
-./scripts/deploy.sh deploy \
-  --env production \
-  --domain yourdomain.com \
-  --verbose
+# Deploy with automatic configuration generation
+./scripts/deploy.sh deploy --env production --domain yourdomain.com
+
+# Create new app (force creation)
+./scripts/deploy.sh create --name my-app --env production
+
+# Update existing app
+./scripts/deploy.sh update
 
 # Check deployment status
 ./scripts/deploy.sh status
 
-# View logs if needed
-./scripts/deploy.sh logs backend
-```
-
-### Development/Testing
-
-```bash
-# Quick development deployment
-./scripts/deploy.sh deploy --env development --skip-env-check
-
-# Validate configuration without deploying
-./scripts/deploy.sh validate --env production
-
-# Dry run to see what would happen
-./scripts/deploy.sh deploy --env production --dry-run
-```
-
-### Maintenance Operations
-
-```bash
-# View recent logs
+# View application logs
 ./scripts/deploy.sh logs backend
 ./scripts/deploy.sh logs frontend
 
-# Check app status and health
-./scripts/deploy.sh status
+# Rollback deployment (manual process)
+./scripts/deploy.sh rollback
 
-# Destroy app (with confirmation)
+# Destroy application (with confirmation)
 ./scripts/deploy.sh destroy
+
+# Validate configuration
+./scripts/deploy.sh validate --env production
 ```
 
-## Environment Variables
+### 3. Makefile Commands
 
-### Required Variables
-
-The deployment script requires these environment variables to be set:
+Convenient shortcuts for common operations:
 
 ```bash
-# Supabase Configuration
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your-supabase-anon-key
-SUPABASE_SERVICE_KEY=your-supabase-service-role-key
+# Show available commands
+make help
 
-# Google AI Configuration
-GOOGLE_API_KEY=your-google-ai-api-key
+# Setup development environment
+make setup-dev
 
-# Security Configuration
-JWT_SECRET=your-32-character-random-secret
+# Configuration management
+make config-dev     # Generate development config
+make config-prod    # Generate production config
+make config-check   # Validate configuration
+make status         # Show config file status
+make clean          # Remove generated files
+
+# Deployment
+make deploy         # Deploy to production (auto-generates config)
 ```
 
-### Optional Variables
+## ⚙️ Configuration System
 
-```bash
-# GitHub Configuration
-GITHUB_REPO=your-username/ai-agent-platform
+### Centralized Configuration (`config.yaml`)
 
-# Security Configuration
-TRUSTED_HOSTS=yourdomain.com,www.yourdomain.com
-ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
-
-# Performance Configuration
-MAX_CONCURRENT_JOBS=10
-JOB_TIMEOUT=3600
-```
-
-### Environment Files
-
-Create a `.env` file in the project root:
-
-```bash
-# Copy example file
-cp .env.example .env
-
-# Edit with your values
-nano .env
-```
-
-## Configuration Files
-
-### DigitalOcean App Spec
-
-The deployment script uses `.do/app.yaml` for DigitalOcean App Platform configuration. Key placeholders that get replaced:
-
-- `your-domain.com` → Your custom domain
-- `your-github-username/ai-agent-platform` → Your GitHub repository
-- Environment-specific values based on `--env` flag
-
-### Automatic Configuration Updates
-
-The script automatically updates the app.yaml configuration based on command line options:
-
-```bash
-# Updates domain in app.yaml
---domain yourdomain.com
-
-# Updates environment variables
---env production
-
-# Uses GitHub repo from environment variable
-GITHUB_REPO=myuser/my-ai-agent
-```
-
-## Error Handling and Troubleshooting
-
-### Common Issues
-
-**Environment Variable Missing:**
-```bash
-Error: SUPABASE_URL not set
-Solution: Set required environment variables in .env file
-```
-
-**DigitalOcean Authentication Failed:**
-```bash
-Error: doctl authentication failed
-Solution: Run 'doctl auth init' and provide your API token
-```
-
-**App Creation Failed:**
-```bash
-Error: App with name 'ai-agent-platform' already exists
-Solution: Use --name option to specify different name or --force-create to overwrite
-```
-
-**Domain Configuration Failed:**
-```bash
-Error: Domain verification failed
-Solution: Ensure DNS records are properly configured
-```
-
-### Debug Mode
-
-Enable verbose logging for troubleshooting:
-
-```bash
-./scripts/deploy.sh deploy --verbose --dry-run
-```
-
-### Script Validation
-
-Validate your configuration before deployment:
-
-```bash
-# Check environment variables
-./scripts/deploy.sh validate
-
-# Test with dry run
-./scripts/deploy.sh deploy --env production --dry-run
-```
-
-## Advanced Usage
-
-### Multiple Environments
-
-Deploy to different environments with environment-specific configurations:
-
-```bash
-# Development
-./scripts/deploy.sh deploy --env development --name ai-agent-dev
-
-# Staging
-./scripts/deploy.sh deploy --env staging --name ai-agent-staging
-
-# Production
-./scripts/deploy.sh deploy --env production --name ai-agent-prod --domain yourdomain.com
-```
-
-### Automated CI/CD
-
-Use in GitHub Actions:
+All project configuration is managed from a single YAML file:
 
 ```yaml
-- name: Deploy to DigitalOcean
-  run: |
-    ./scripts/deploy.sh deploy --env production --skip-env-check
-  env:
-    SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-    GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-    # ... other secrets
+# Project metadata
+project:
+  name: "AI Agent Platform"
+  version: "1.0.0"
+
+# Environment-specific settings
+environments:
+  development:
+    debug: true
+    api_base_url: "http://localhost:8000"
+  production:
+    debug: false
+    api_base_url: "https://yourdomain.com"
+
+# Database configuration
+database:
+  supabase_url: "https://your-project.supabase.co"
+  supabase_anon_key: "your-anon-key"
+  supabase_service_key: "your-service-key"
+
+# AI providers
+ai_providers:
+  default_provider: "google"
+  google:
+    api_key: "your-google-api-key"
+    default_model: "gemini-2.0-flash"
+
+# Deployment settings
+deployment:
+  digital_ocean:
+    app_name: "your-app-name"
+    domain: "yourdomain.com"
+    region: "nyc"
 ```
 
----
+### Benefits
 
-**Related Documentation:**
-- **[Deployment Guide](deployment-guide.md)** - General deployment concepts
-- **[DigitalOcean Setup](digitalocean.md)** - Platform-specific setup
-- **[Configuration Reference](../configuration/README.md)** - Environment variables 
+- **No Duplication** - Define variables once, use everywhere
+- **Environment Separation** - Clear development vs production settings
+- **Type Safety** - YAML validation prevents configuration errors
+- **Version Control** - Real config.yaml is gitignored for security
+- **Deployment Ready** - Auto-generates all deployment files
+
+## 🛠️ Deployment Workflow
+
+### Standard Deployment Process
+
+1. **Setup Configuration**:
+   ```bash
+   cp config.yaml.example config.yaml
+   # Edit config.yaml with your values
+   ```
+
+2. **Generate Configuration Files**:
+   ```bash
+   make config-prod
+   ```
+
+3. **Deploy Application**:
+   ```bash
+   make deploy
+   ```
+
+4. **Monitor Deployment**:
+   ```bash
+   ./scripts/deploy.sh status
+   ```
+
+### Automated Deployment Features
+
+The deployment script automatically:
+
+- **Validates Prerequisites** - Checks for required tools (doctl, python, etc.)
+- **Generates Configuration** - Creates production config from config.yaml
+- **Builds Frontend** - Compiles and optimizes React application
+- **Deploys Services** - Creates or updates DigitalOcean app
+- **Monitors Progress** - Tracks deployment status with real-time updates
+- **Validates Health** - Tests health endpoints after deployment
+
+## 📊 Script Options
+
+### Configuration Generator Options
+
+```bash
+python scripts/generate_config.py [ENVIRONMENT] [OPTIONS]
+
+ENVIRONMENTS:
+  development    Generate development configuration (default)
+  production     Generate production configuration
+
+OPTIONS:
+  --dry-run      Show what would be generated without writing files
+  --help         Show help message
+```
+
+### Deployment Script Options
+
+```bash
+./scripts/deploy.sh [COMMAND] [OPTIONS]
+
+COMMANDS:
+  deploy         Deploy or update application (default)
+  create         Create new app (force creation)
+  update         Update existing app
+  status         Check deployment status
+  logs           View application logs
+  rollback       Rollback to previous deployment
+  destroy        Destroy application
+  validate       Validate configuration
+
+OPTIONS:
+  -n, --name NAME         App name (default: from config.yaml)
+  -e, --env ENV          Environment (development|production)
+  -d, --domain DOMAIN    Custom domain
+  --force-create         Force create new app
+  --skip-build          Skip frontend build
+  --skip-env-check      Skip environment validation
+  --dry-run             Show what would be done
+  -v, --verbose         Enable verbose logging
+  -h, --help            Show help
+```
+
+## 🔍 Monitoring and Debugging
+
+### Health Checks
+
+The deployment includes automatic health monitoring:
+
+```bash
+# Check overall application status
+./scripts/deploy.sh status
+
+# View real-time logs
+./scripts/deploy.sh logs backend
+./scripts/deploy.sh logs frontend
+
+# Test health endpoints manually
+curl https://yourdomain.com/health
+curl https://yourdomain.com/
+```
+
+### Common Deployment Issues
+
+1. **Configuration Errors**:
+   ```bash
+   # Validate configuration
+   make config-check
+   python scripts/generate_config.py production --dry-run
+   ```
+
+2. **Build Failures**:
+   ```bash
+   # Check frontend build locally
+   cd frontend && npm run build
+   
+   # Deploy with build logs
+   ./scripts/deploy.sh deploy --verbose
+   ```
+
+3. **Environment Variable Issues**:
+   ```bash
+   # Regenerate configuration
+   make config-prod
+   
+   # Check generated files
+   make status
+   ```
+
+4. **Deployment Timeouts**:
+   ```bash
+   # Check deployment logs
+   ./scripts/deploy.sh logs backend
+   
+   # Manual deployment monitoring
+   doctl apps list-deployments YOUR_APP_ID
+   ```
+
+## 🔐 Security Considerations
+
+### Environment Variables
+
+- **Sensitive Data**: All secrets marked as `type: SECRET` in DigitalOcean
+- **Local Security**: config.yaml is gitignored and should have restricted permissions
+- **Production Secrets**: Use strong, randomly generated keys
+
+### Best Practices
+
+1. **Configuration Security**:
+   ```bash
+   # Secure the config file
+   chmod 600 config.yaml
+   
+   # Generate strong JWT secret
+   openssl rand -base64 32
+   ```
+
+2. **Deployment Security**:
+   - Use environment-specific configurations
+   - Enable secure cookies in production
+   - Configure proper CORS origins
+   - Use HTTPS for all production traffic
+
+3. **Access Control**:
+   - Limit doctl access to deployment-only permissions
+   - Use separate Supabase projects for dev/prod
+   - Rotate API keys regularly
+
+## 🚀 Advanced Usage
+
+### Custom Deployment Targets
+
+Modify `config.yaml` for different deployment scenarios:
+
+```yaml
+deployment:
+  digital_ocean:
+    app_name: "staging-app"        # Different app for staging
+    region: "fra1"                 # European deployment
+    backend_instance: "basic-s"    # Larger instance for production
+    frontend_instance: "basic-s"
+```
+
+### Multi-Environment Setup
+
+```bash
+# Development deployment
+python scripts/generate_config.py development
+./scripts/deploy.sh deploy --env development --name dev-app
+
+# Staging deployment  
+python scripts/generate_config.py production
+# Edit config.yaml for staging settings
+./scripts/deploy.sh deploy --env production --name staging-app
+
+# Production deployment
+./scripts/deploy.sh deploy --env production --name prod-app
+```
+
+### CI/CD Integration
+
+The scripts are designed for CI/CD integration:
+
+```yaml
+# GitHub Actions example
+- name: Deploy to Production
+  run: |
+    echo "$CONFIG_YAML" > config.yaml
+    make config-prod
+    ./scripts/deploy.sh deploy --env production
+  env:
+    CONFIG_YAML: ${{ secrets.CONFIG_YAML }}
+    DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DO_TOKEN }}
+```
+
+## 📚 Related Documentation
+
+- **[Configuration Guide](../../CONFIG.md)** - Complete configuration system documentation
+- **[Deployment Guide](deployment-guide.md)** - Step-by-step deployment instructions
+- **[DigitalOcean Guide](digitalocean.md)** - DigitalOcean-specific configuration
+- **[Security Guide](../security/deployment-security.md)** - Security best practices 

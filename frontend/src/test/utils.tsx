@@ -80,7 +80,6 @@ export const mockAuthContext = {
     expires_in: 3600,
   },
   signIn: vi.fn(),
-  signUp: vi.fn(),
   signOut: vi.fn(),
   refreshAuth: vi.fn(),
 }
@@ -306,4 +305,20 @@ export { userEvent } from '@testing-library/user-event'
 // Re-export testing library functions
 // eslint-disable-next-line react-refresh/only-export-components
 export * from '@testing-library/react'
-export { vi } from 'vitest' 
+export { vi } from 'vitest'
+
+// Mock useAuth hook
+const mockUseAuth = {
+  user: null,
+  loading: false,
+  session: null,
+  tokens: {
+    access_token: 'mock-token',
+    refresh_token: 'mock-refresh-token',
+    token_type: 'bearer',
+    expires_in: 3600,
+  },
+  signIn: vi.fn(),
+  signOut: vi.fn(),
+  refreshAuth: vi.fn(),
+} 
