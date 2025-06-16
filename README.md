@@ -39,26 +39,23 @@ AI Agent Platform is a comprehensive framework for building production-ready AI 
 
 ## ⚡ Quick Start
 
-### 1. Clone and Install Dependencies
+### 1. Clone and Setup Environment
 ```bash
 # Clone the repository
 git clone https://github.com/dmautz1/ai-agent-platform
 cd ai-agent-platform
 
-# Install dependencies
-npm install
+# Create and activate Python virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install all dependencies (Python + Node.js via workspace)
 pip install -r requirements.txt
+npm install
 
 # Install frontend dependencies
 cd frontend
 npm install
-cd ..
-
-# Install backend dependencies
-cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
 cd ..
 ```
 
@@ -115,25 +112,70 @@ In your Supabase dashboard, go to SQL Editor and run these migration files in or
 
 ### 5. Start Development Servers
 ```bash
-# Terminal 1: Start Backend (from backend directory)
+# Terminal 1: Start Backend
 cd backend
-source venv/bin/activate  # On Windows: venv\Scripts\activate
 python main.py
 
-# Terminal 2: Start Frontend (from frontend directory)
-cd frontend
-npm run dev
+# Terminal 2: Start Frontend (using workspace command)
+npm run dev:frontend
 ```
 
 ### 6. Create Your First User
 ```bash
-# From the backend directory
+# From the backend directory (with venv activated)
 cd backend
-source venv/bin/activate  # On Windows: venv\Scripts\activate
 python create_admin_user.py admin@example.com password123 "Admin User"
 ```
 
 **✅ Ready!** Open http://localhost:5173 and start building agents.
+
+## 🏗️ Project Structure
+
+### Unified Dependencies Architecture
+The project now uses a **unified dependency management** system:
+
+```
+ai-agent-platform/
+├── venv/                    # Single Python virtual environment
+├── node_modules/            # Single Node.js dependencies (hoisted)
+├── requirements.txt         # Unified Python dependencies
+├── package.json             # Workspace orchestration + dev tools
+├── backend/                 # Python FastAPI backend
+│   ├── agents/             # Custom agents (auto-discovered)
+│   ├── config/             # Configuration management
+│   ├── services/           # Core services (AI, database)
+│   └── tests/              # Backend tests
+├── frontend/               # React TypeScript frontend
+│   ├── package.json        # Frontend app dependencies
+│   ├── src/
+│   │   ├── components/     # React components
+│   │   ├── hooks/          # Custom React hooks
+│   │   └── services/       # API services
+│   └── tests/              # Frontend tests
+├── e2e-tests/              # Playwright end-to-end tests
+├── docs/                   # Documentation
+└── supabase/               # Database migrations
+```
+
+### Benefits of New Architecture
+✅ **Single virtual environment** - No confusion about which environment to use  
+✅ **Unified dependencies** - All Python packages in one requirements.txt  
+✅ **NPM workspaces** - Efficient Node.js dependency management  
+✅ **Simplified workflow** - Fewer commands, clearer structure  
+✅ **Standard practices** - Follows Python and Node.js conventions  
+
+### Workspace Commands
+```bash
+# Python environment
+source venv/bin/activate     # Activate virtual environment
+pip install -r requirements.txt  # Install Python dependencies
+
+# Node.js workspace
+npm install                  # Install all workspace dependencies
+npm run dev:frontend         # Start frontend dev server
+npm run build:frontend       # Build frontend for production
+npm run test:frontend        # Run frontend tests
+```
 
 ## 🚀 What's Included
 
@@ -203,25 +245,6 @@ The platform uses a **dual-agent system** providing both flexibility and rapid d
 
 **→ [Complete Architecture Guide](docs/architecture/agent-architecture.md)** - Understanding the platform design
 
-### Project Structure
-```
-ai-agent-platform/
-├── backend/              # Python FastAPI backend
-│   ├── agents/          # Custom agents (auto-discovered)
-│   ├── config/          # Configuration management
-│   ├── services/        # Core services (AI, database)
-│   └── tests/           # Backend tests
-├── frontend/            # React TypeScript frontend
-│   ├── src/
-│   │   ├── components/  # React components
-│   │   ├── hooks/       # Custom React hooks
-│   │   └── services/    # API services
-│   └── tests/           # Frontend tests
-├── e2e-tests/           # Playwright end-to-end tests
-├── docs/                # Documentation
-└── supabase/            # Database migrations
-```
-
 ## 📚 Documentation
 
 ### Getting Started
@@ -259,20 +282,26 @@ ai-agent-platform/
 
 ### Running Tests
 ```bash
-# All tests
-npm test
+# All tests (frontend + backend + e2e)
+npm run test
 
-# Backend tests only
+# Backend tests only (with virtual environment)
 npm run test:backend
 
-# Frontend tests only  
+# Frontend tests only (via workspace)
 npm run test:frontend
 
 # E2E tests
 npm run test:e2e
 
-# Watch mode (development)
-npm run test:watch
+# Watch mode for frontend tests
+npm run test:frontend:watch
+
+# Frontend tests with coverage
+npm run test:frontend -- --coverage
+
+# Backend tests with coverage
+npm run test:backend:coverage
 ```
 
 ## 🚀 Deployment
@@ -299,6 +328,18 @@ docker-compose up --build
 **→ [Complete Deployment Guide](docs/deployment/deployment-guide.md)**
 
 ## 🔄 Development Workflow
+
+### Daily Development Setup
+```bash
+# 1. Activate Python environment
+source venv/bin/activate
+
+# 2. Start backend (Terminal 1)
+cd backend && python main.py
+
+# 3. Start frontend (Terminal 2) 
+npm run dev:frontend
+```
 
 ### Creating a New Agent
 1. **Create agent file**: `backend/agents/my_agent.py`

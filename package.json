@@ -1,36 +1,18 @@
 {
-  "devDependencies": {
-    "@playwright/test": "^1.52.0",
-    "@types/node": "^22.15.29",
-    "autoprefixer": "^10.4.21",
-    "playwright": "^1.52.0",
-    "postcss": "^8.5.4",
-    "tailwindcss": "^4.1.8"
-  },
   "name": "ai-agent-platform",
   "description": "> **Revolutionary Self-Contained Agent Framework** - Build AI agents with zero configuration",
   "version": "1.0.0",
   "main": "index.js",
-  "dependencies": {
-    "browserslist": "^4.25.0",
-    "caniuse-lite": "^1.0.30001720",
-    "electron-to-chromium": "^1.5.161",
-    "escalade": "^3.2.0",
-    "fraction.js": "^4.3.7",
-    "nanoid": "^3.3.11",
-    "node-releases": "^2.0.19",
-    "normalize-range": "^0.1.2",
-    "picocolors": "^1.1.1",
-    "postcss-value-parser": "^4.2.0",
-    "source-map-js": "^1.2.1",
-    "update-browserslist-db": "^1.1.3"
-  },
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ],
   "scripts": {
     "test": "npm run test:frontend && npm run test:backend && npm run test:e2e",
-    "test:frontend": "cd frontend && npm run test",
-    "test:frontend:unit": "cd frontend && npm run test:unit",
-    "test:frontend:integration": "cd frontend && npm run test:integration",
-    "test:frontend:watch": "cd frontend && npm run test:watch",
+    "test:frontend": "npm run test --workspace=frontend",
+    "test:frontend:unit": "npm run test:unit --workspace=frontend",
+    "test:frontend:integration": "npm run test:integration --workspace=frontend",
+    "test:frontend:watch": "npm run test:watch --workspace=frontend",
     "test:backend": "cd backend && python -m pytest",
     "test:backend:unit": "cd backend && python -m pytest tests/unit/",
     "test:backend:integration": "cd backend && python -m pytest tests/integration/",
@@ -52,8 +34,20 @@
     "e2e:mobile": "playwright test e2e-tests/03-mobile-workflow.spec.ts",
     "e2e:api-auth": "playwright test e2e-tests/04-api-authentication.spec.ts",
     "e2e:api-security": "playwright test e2e-tests/05-agent-api-security.spec.ts",
-    "e2e:api": "playwright test e2e-tests/04-api-authentication.spec.ts e2e-tests/05-agent-api-security.spec.ts"
+    "e2e:api": "playwright test e2e-tests/04-api-authentication.spec.ts e2e-tests/05-agent-api-security.spec.ts",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "build:frontend": "npm run build --workspace=frontend",
+    "install:all": "npm install && npm install --workspace=frontend"
   },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "@types/node": "^22.15.29",
+    "autoprefixer": "^10.4.21",
+    "playwright": "^1.52.0",
+    "postcss": "^8.5.4",
+    "tailwindcss": "^4.1.8"
+  },
+  "dependencies": {},
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dmautz1/ai-agent-platform.git"
