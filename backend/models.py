@@ -68,6 +68,7 @@ class JobCreateRequest(BaseModel):
     """Job creation request model"""
     agent_identifier: str = Field(..., description="Identifier of the agent to process this job")
     data: Dict[str, Any] = Field(..., description="Job data (validated by specific agent)")
+    title: str = Field(..., description="Job title for identification and organization")
     priority: Optional[int] = Field(default=0, ge=0, le=10, description="Job priority (0-10)")
     tags: Optional[List[str]] = Field(default=None, description="Job tags for organization")
     
@@ -83,6 +84,7 @@ class JobCreateRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "agent_identifier": "simple_prompt",
+                "title": "Simple Prompt Job",
                 "data": {
                     "prompt": "Hello, how are you?",
                     "max_tokens": 1000
@@ -99,6 +101,7 @@ class JobResponse(BaseModel):
     status: JobStatus = Field(..., description="Current job status")
     agent_identifier: str = Field(..., description="Agent identifier that processed/will process this job")
     data: Dict[str, Any] = Field(..., description="Job input data")
+    title: Optional[str] = Field(None, description="Human-readable job title")
     result: Optional[str] = Field(None, description="Job result")
     result_format: Optional[str] = Field(None, description="Format of the result data")
     error_message: Optional[str] = Field(None, description="Error message if failed")
@@ -112,6 +115,7 @@ class JobResponse(BaseModel):
                 "status": "completed",
                 "agent_identifier": "simple_prompt",
                 "data": {"prompt": "Hello, how are you?", "max_tokens": 1000},
+                "title": "Simple Prompt Job",
                 "result": "Hello! I'm doing well, thank you for asking. How can I help you today?",
                 "result_format": "markdown",
                 "error_message": None,

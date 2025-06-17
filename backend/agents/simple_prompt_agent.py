@@ -18,16 +18,29 @@ logger = get_logger(__name__)
 @job_model
 class PromptJobData(BaseModel):
     """Simple prompt job data model with LLM provider and model selection"""
-    prompt: str = Field(..., description="Text prompt to send to LLM")
-    provider: Optional[LLMProvider] = Field(
-        default=None, 
-        description="LLM provider to use (google, openai, grok, anthropic, deepseek, llama)",
-        json_schema_extra={"form_field_type": "llm_provider"}
+    prompt: str = Field(
+        ...,
+        description="Enter your question or request here. Examples: 'Write a summary of renewable energy benefits' or 'Explain quantum computing in simple terms' or 'Create a marketing email for a new product'",
+        min_length=1,
+        max_length=2000
     )
-    model: Optional[str] = Field(default=None, description="Specific model to use (provider-specific)")
-    temperature: float = Field(default=0.8, description="Temperature for response generation")
-    system_instruction: Optional[str] = Field(default=None, description="Optional system instruction for the LLM")
-    max_tokens: Optional[int] = Field(default=1000, description="Maximum tokens to generate")
+    temperature: float = Field(
+        default=0.8,
+        description="Controls randomness in responses (0.0 = deterministic, 2.0 = very creative)",
+        ge=0.0,
+        le=2.0
+    )
+    system_instruction: Optional[str] = Field(
+        default=None,
+        description="Define the AI's role and behavior. Examples: 'You are a professional copywriter specializing in marketing content' or 'You are a technical expert who explains complex topics clearly' or 'You are a creative writing assistant'",
+        max_length=1000
+    )
+    max_tokens: Optional[int] = Field(
+        default=1000,
+        description="Maximum number of tokens to generate in the response",
+        ge=1,
+        le=4000
+    )
 
 class SimplePromptAgent(SelfContainedAgent):
     """Simple agent that processes text prompts using any available LLM provider"""
@@ -51,17 +64,21 @@ class SimplePromptAgent(SelfContainedAgent):
             # Use custom system instruction if provided, otherwise use default
             system_instruction = job_data.system_instruction or self._get_system_instruction()
             
+            # Get provider and model from job data (passed from frontend LLM selector)
+            provider = getattr(job_data, 'provider', None)
+            model = getattr(job_data, 'model', None)
+            
             response = await self.llm_service.query(
                 prompt=job_data.prompt,
-                provider=job_data.provider,
-                model=job_data.model,
+                provider=provider,
+                model=model,
                 system_instruction=system_instruction,
                 temperature=job_data.temperature,
                 max_tokens=job_data.max_tokens
             )
             
             # Include provider info in metadata
-            provider_used = job_data.provider or self.llm_service._default_provider
+            provider_used = provider or self.llm_service._default_provider
             
             return AgentExecutionResult(
                 success=True,
@@ -69,7 +86,7 @@ class SimplePromptAgent(SelfContainedAgent):
                 metadata={
                     "agent": self.name,
                     "provider": provider_used,
-                    "model": job_data.model,
+                    "model": model,
                     "temperature": job_data.temperature
                 },
                 result_format=self.result_format
@@ -92,17 +109,21 @@ class SimplePromptAgent(SelfContainedAgent):
             # Use custom system instruction if provided, otherwise use default
             system_instruction = job_data.system_instruction or self._get_system_instruction()
             
+            # Get provider and model from job data (passed from frontend LLM selector)
+            provider = getattr(job_data, 'provider', None)
+            model = getattr(job_data, 'model', None)
+            
             result = await self.llm_service.query(
                 prompt=job_data.prompt,
-                provider=job_data.provider,
-                model=job_data.model,
+                provider=provider,
+                model=model,
                 system_instruction=system_instruction,
                 temperature=job_data.temperature,
                 max_tokens=job_data.max_tokens
             )
             
             # Include provider info in response
-            provider_used = job_data.provider or self.llm_service._default_provider
+            provider_used = provider or self.llm_service._default_provider
             
             return {
                 "status": "success",
@@ -110,7 +131,7 @@ class SimplePromptAgent(SelfContainedAgent):
                 "result_format": self.result_format,
                 "metadata": {
                     "provider": provider_used,
-                    "model": job_data.model,
+                    "model": model,
                     "temperature": job_data.temperature
                 }
             }

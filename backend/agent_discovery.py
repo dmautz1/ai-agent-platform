@@ -393,6 +393,20 @@ class AgentDiscoverySystem:
             "cache_ttl_minutes": int(self.cache_ttl.total_seconds() / 60)
         }
     
+    def get_discovered_agents(self) -> Dict[str, AgentMetadata]:
+        """
+        Get all discovered agents (alias for discover_agents for compatibility).
+        
+        Returns:
+            Dictionary of agent metadata keyed by agent identifier
+        """
+        return self.discover_agents()
+    
+    @property
+    def last_scan_time(self) -> Optional[datetime]:
+        """Get the last scan time"""
+        return self._cache.last_scan if self._cache else None
+    
     def invalidate_cache(self) -> None:
         """Invalidate the current cache"""
         self._cache = None

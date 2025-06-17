@@ -50,21 +50,14 @@ export const JobDetails: React.FC = () => {
   }, []);
 
   // Initialize single job polling
-  const { pollingState, startPolling, stopPolling, pausePolling, resumePolling, forceUpdate } = useSingleJobPolling(
+  const { pollingState, pausePolling, resumePolling, forceUpdate } = useSingleJobPolling(
     id || '',
     handleJobUpdate,
     {
-      baseInterval: 3000
+      baseInterval: 3000,
+      autoStart: !!id // Only start if we have a valid ID
     }
   );
-
-  // Start polling when component mounts or ID changes
-  useEffect(() => {
-    if (!id) return;
-
-    startPolling();
-    return () => stopPolling();
-  }, [id, startPolling, stopPolling]);
 
   // Handle polling errors
   useEffect(() => {
@@ -158,6 +151,18 @@ export const JobDetails: React.FC = () => {
     }
   };
 
+  const getAgentDisplayName = (agentIdentifier: string): string => {
+    if (!agentIdentifier || agentIdentifier === 'unknown') {
+      return 'UNKNOWN';
+    }
+    
+    // Convert identifier to display name (simple_prompt -> Simple Prompt)
+    return agentIdentifier
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
   const getAgentIdentifierDisplay = (agentIdentifier: string) => {
     if (!agentIdentifier || agentIdentifier === 'unknown') {
       return (
@@ -167,9 +172,11 @@ export const JobDetails: React.FC = () => {
       );
     }
     
+    const displayName = getAgentDisplayName(agentIdentifier);
+    
     return (
-      <span className="text-sm font-mono text-muted-foreground">
-        {agentIdentifier.replace(/_/g, ' ').toUpperCase()}
+      <span className="text-sm text-muted-foreground" title={agentIdentifier}>
+        {displayName}
       </span>
     );
   };
@@ -210,8 +217,8 @@ export const JobDetails: React.FC = () => {
 
   // Mobile header component
   const MobileHeader: React.FC<{ job: Job }> = ({ job }) => {
-    const agentIdentifier = job.data?.agent_identifier || 'unknown';
-    const title = job.data?.title || `Job ${job.id.slice(0, 8)}`;
+    const agentIdentifier = job.agent_identifier || job.data?.agent_identifier || 'unknown';
+    const title = job.title || job.data?.title || `Job ${job.id.slice(0, 8)}`;
     const isActiveJob = job.status === 'pending' || job.status === 'running';
 
     return (
@@ -393,8 +400,8 @@ export const JobDetails: React.FC = () => {
     );
   }
 
-  const agentIdentifier = job.data?.agent_identifier || 'unknown';
-  const title = job.data?.title || `Job ${job.id.slice(0, 8)}`;
+  const agentIdentifier = job.agent_identifier || job.data?.agent_identifier || 'unknown';
+  const title = job.title || job.data?.title || `Job ${job.id.slice(0, 8)}`;
   const isActiveJob = job.status === 'pending' || job.status === 'running';
 
   return (

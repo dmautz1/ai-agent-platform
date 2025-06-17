@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 
+from fastapi import HTTPException
 from config.agent import AgentConfig, PerformanceMode, AgentProfile
 from models import JobStatus, JobDataBase
 from database import DatabaseClient
@@ -18,6 +19,36 @@ from logging_system import get_logger, get_performance_logger
 
 logger = get_logger(__name__)
 perf_logger = get_performance_logger()
+
+class AgentError(HTTPException):
+    """Base exception for agent-related errors"""
+    pass
+
+class AgentNotFoundError(AgentError):
+    """Exception for when an agent is not found"""
+    def __init__(self, agent_identifier: str, detail: str = None):
+        self.agent_identifier = agent_identifier
+        detail = detail or f"Agent '{agent_identifier}' not found"
+        super().__init__(status_code=404, detail=detail)
+
+class AgentDisabledError(AgentError):
+    """Exception for when an agent is disabled"""
+    def __init__(self, agent_identifier: str, lifecycle_state: str = None, detail: str = None):
+        self.agent_identifier = agent_identifier
+        self.lifecycle_state = lifecycle_state
+        if not detail:
+            if lifecycle_state:
+                detail = f"Agent '{agent_identifier}' is {lifecycle_state} and not available for use"
+            else:
+                detail = f"Agent '{agent_identifier}' is not enabled"
+        super().__init__(status_code=400, detail=detail)
+
+class AgentNotLoadedError(AgentError):
+    """Exception for when an agent exists but is not loaded"""
+    def __init__(self, agent_identifier: str, detail: str = None):
+        self.agent_identifier = agent_identifier
+        detail = detail or f"Agent '{agent_identifier}' is not currently loaded or available"
+        super().__init__(status_code=503, detail=detail)
 
 class AgentExecutionResult:
     """

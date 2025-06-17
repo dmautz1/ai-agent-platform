@@ -90,8 +90,8 @@ export function LLMSelector({
                 provider: internalName,
                 status: 'available',
                 service_name: response.data.service || getServiceDisplayName(providerName),
-                default_model: response.data.default_model,
-                available_models: response.data.available_models || []
+                default_model: response.data.default_model || (response.data.models && response.data.models[0]),
+                available_models: response.data.models || []
               };
               availableProviders.push(internalName);
             }

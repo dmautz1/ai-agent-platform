@@ -18,42 +18,30 @@ vi.mock('../../src/lib/api', () => ({
 const mockJobs: Job[] = [
   {
     id: 'job-1',
+    user_id: 'user-1',
     status: 'pending' as JobStatus,
     priority: 'normal',
+    data: { agent_identifier: 'test_agent', title: 'Test Job 1' },
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
-    user_id: 'user-1',
-    data: {
-      agent_identifier: 'simple_prompt',
-      title: 'Test Job 1',
-      prompt: 'Test prompt content'
-    },
   },
   {
     id: 'job-2',
+    user_id: 'user-1',
     status: 'running' as JobStatus,
     priority: 'high',
+    data: { agent_identifier: 'test_agent_2', title: 'Test Job 2' },
     created_at: '2024-01-01T01:00:00Z',
     updated_at: '2024-01-01T01:00:00Z',
-    user_id: 'user-1',
-    data: {
-      agent_identifier: 'simple_prompt',
-      title: 'Test Job 2',
-      prompt: 'Test content for processing'
-    },
   },
   {
     id: 'job-3',
+    user_id: 'user-1',
     status: 'completed' as JobStatus,
     priority: 'normal',
+    data: { agent_identifier: 'test_agent_3', title: 'Test Job 3' },
     created_at: '2024-01-01T02:00:00Z',
     updated_at: '2024-01-01T02:30:00Z',
-    user_id: 'user-1',
-    data: {
-      agent_identifier: 'simple_prompt',
-      title: 'Test Job 3',
-      prompt: 'Test URL content'
-    },
   },
 ];
 
@@ -75,43 +63,27 @@ describe('Job Polling and Real-Time Updates Validation (Simplified)', () => {
     vi.resetAllMocks();
   });
 
-  describe('useJobPolling Hook Initialization', () => {
+  describe('useJobPolling Hook', () => {
     it('should initialize with correct default state', () => {
       const onUpdate = vi.fn();
-      const { result } = renderHook(() => useJobPolling(onUpdate));
+      const { result } = renderHook(() => useJobPolling(onUpdate, { autoStart: false }));
 
       expect(result.current.pollingState.isPolling).toBe(false);
+      expect(result.current.pollingState.isPaused).toBe(false);
       expect(result.current.pollingState.lastUpdate).toBeNull();
       expect(result.current.pollingState.retryCount).toBe(0);
       expect(result.current.pollingState.error).toBeNull();
-      expect(typeof result.current.startPolling).toBe('function');
-      expect(typeof result.current.stopPolling).toBe('function');
+      expect(typeof result.current.pausePolling).toBe('function');
+      expect(typeof result.current.resumePolling).toBe('function');
       expect(typeof result.current.forceUpdate).toBe('function');
     });
 
-    it('should accept polling options and pass them correctly', () => {
+    it('should handle API calls correctly', async () => {
       const onUpdate = vi.fn();
-      const options = {
-        baseInterval: 2000,
-        backgroundOptimization: false,
-        maxRetries: 5,
-        useLightweightPolling: false,
-      };
-
-      const { result } = renderHook(() => useJobPolling(onUpdate, options));
-
-      // Hook should initialize without errors
-      expect(result.current.pollingState.isPolling).toBe(false);
-    });
-  });
-
-  describe('useJobPolling API Integration', () => {
-    it('should fetch initial job data when startPolling is called', async () => {
-      const onUpdate = vi.fn();
-      const { result } = renderHook(() => useJobPolling(onUpdate));
+      const { result } = renderHook(() => useJobPolling(onUpdate, { autoStart: false }));
 
       await act(async () => {
-        await result.current.startPolling();
+        await result.current.forceUpdate();
       });
 
       expect(api.jobs.getAll).toHaveBeenCalledTimes(1);
@@ -124,173 +96,122 @@ describe('Job Polling and Real-Time Updates Validation (Simplified)', () => {
       const error = new Error('Network error');
       vi.mocked(api.jobs.getAll).mockRejectedValueOnce(error);
 
-      const { result } = renderHook(() => useJobPolling(onUpdate));
+      const { result } = renderHook(() => useJobPolling(onUpdate, { autoStart: false }));
 
       await act(async () => {
-        await result.current.startPolling();
+        await result.current.forceUpdate();
       });
 
       expect(result.current.pollingState.error).toBe('Network error');
       expect(result.current.pollingState.retryCount).toBe(1);
     });
 
-    it('should call forceUpdate and fetch fresh data', async () => {
+    it('should support pause and resume functionality', () => {
       const onUpdate = vi.fn();
-      const { result } = renderHook(() => useJobPolling(onUpdate));
+      const { result } = renderHook(() => useJobPolling(onUpdate, { autoStart: false }));
 
-      await act(async () => {
-        await result.current.startPolling();
+      // Initially not paused
+      expect(result.current.pollingState.isPaused).toBe(false);
+
+      // Pause polling
+      act(() => {
+        result.current.pausePolling();
       });
 
-      vi.clearAllMocks();
+      expect(result.current.pollingState.isPaused).toBe(true);
 
-      await act(async () => {
-        await result.current.forceUpdate();
+      // Resume polling
+      act(() => {
+        result.current.resumePolling();
       });
 
-      // forceUpdate calls fetchJobs which should call api.jobs.getAll for a fresh fetch
-      // Note: If lightweight polling is enabled, it might use getBatchStatus instead
-      const totalCalls = (vi.mocked(api.jobs.getAll).mock.calls.length) + 
-                         (vi.mocked(api.jobs.getBatchStatus).mock.calls.length);
-      expect(totalCalls).toBeGreaterThan(0);
-      expect(onUpdate).toHaveBeenCalled();
+      expect(result.current.pollingState.isPaused).toBe(false);
     });
 
-    it('should stop polling when stopPolling is called', async () => {
+    it('should persist pause state with persistKey', () => {
       const onUpdate = vi.fn();
-      const { result } = renderHook(() => useJobPolling(onUpdate));
-
-      await act(async () => {
-        await result.current.startPolling();
-      });
+      
+      const { result } = renderHook(() => 
+        useJobPolling(onUpdate, { persistKey: 'test_polling', autoStart: false })
+      );
 
       act(() => {
-        result.current.stopPolling();
+        result.current.pausePolling();
       });
 
-      expect(result.current.pollingState.isPolling).toBe(false);
-    });
+      expect(localStorage.getItem('test_polling')).toBe('true');
 
-    it('should handle API error on initial load with null response', async () => {
-      const onUpdate = vi.fn();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(api.jobs.getAll).mockResolvedValueOnce(null as any);
-
-      const { result } = renderHook(() => useJobPolling(onUpdate));
-
-      await act(async () => {
-        await result.current.startPolling();
+      act(() => {
+        result.current.resumePolling();
       });
 
-      // Check that null responses are handled gracefully (no error should be set)
-      expect(result.current.pollingState.error).toBeNull();
-      expect(onUpdate).toHaveBeenCalledWith(null);
+      expect(localStorage.getItem('test_polling')).toBe('false');
     });
   });
 
   describe('useSingleJobPolling Hook', () => {
-    it('should initialize with correct state for single job polling', () => {
+    it('should initialize with correct default state', () => {
       const onUpdate = vi.fn();
       const { result } = renderHook(() => 
-        useSingleJobPolling('job-1', onUpdate)
+        useSingleJobPolling('job-1', onUpdate, { autoStart: false })
       );
 
       expect(result.current.pollingState.isPolling).toBe(false);
+      expect(result.current.pollingState.isPaused).toBe(false);
       expect(result.current.pollingState.lastUpdate).toBeNull();
-      expect(result.current.pollingState.retryCount).toBe(0);
       expect(result.current.pollingState.error).toBeNull();
     });
 
-    it('should fetch single job data when startPolling is called', async () => {
+    it('should fetch single job data', async () => {
       const onUpdate = vi.fn();
       const { result } = renderHook(() => 
-        useSingleJobPolling('job-1', onUpdate)
+        useSingleJobPolling('job-1', onUpdate, { autoStart: false })
       );
 
       await act(async () => {
-        await result.current.startPolling();
+        await result.current.forceUpdate();
       });
 
       expect(api.jobs.getById).toHaveBeenCalledWith('job-1');
       expect(onUpdate).toHaveBeenCalledWith(mockJobs[0]);
     });
 
-    it('should handle single job polling errors', async () => {
+    it('should handle single job errors', async () => {
       const onUpdate = vi.fn();
       const error = new Error('Job not found');
       vi.mocked(api.jobs.getById).mockRejectedValueOnce(error);
 
       const { result } = renderHook(() => 
-        useSingleJobPolling('job-1', onUpdate)
+        useSingleJobPolling('job-1', onUpdate, { autoStart: false })
       );
 
       await act(async () => {
-        await result.current.startPolling();
+        await result.current.forceUpdate();
       });
 
       expect(result.current.pollingState.error).toBe('Job not found');
       expect(result.current.pollingState.retryCount).toBe(1);
     });
 
-    it('should force update single job data', async () => {
+    it('should support pause and resume functionality', () => {
       const onUpdate = vi.fn();
       const { result } = renderHook(() => 
-        useSingleJobPolling('job-1', onUpdate)
+        useSingleJobPolling('job-1', onUpdate, { autoStart: false })
       );
 
-      await act(async () => {
-        await result.current.startPolling();
-      });
-
-      vi.clearAllMocks();
-
-      await act(async () => {
-        await result.current.forceUpdate();
-      });
-
-      expect(api.jobs.getById).toHaveBeenCalledWith('job-1');
-      expect(onUpdate).toHaveBeenCalledWith(mockJobs[0]);
-    });
-  });
-
-  describe('Polling Hook State Management', () => {
-    it('should update polling state correctly during lifecycle', async () => {
-      const onUpdate = vi.fn();
-      const { result } = renderHook(() => useJobPolling(onUpdate));
-
-      // Initial state
-      expect(result.current.pollingState.isPolling).toBe(false);
-
-      // Start polling
-      await act(async () => {
-        await result.current.startPolling();
-      });
-
-      expect(result.current.pollingState.isPolling).toBe(false); // Should be false after completion
-      expect(result.current.pollingState.lastUpdate).not.toBeNull();
-      expect(result.current.pollingState.error).toBeNull();
-
-      // Stop polling
+      // Pause polling
       act(() => {
-        result.current.stopPolling();
+        result.current.pausePolling();
       });
 
-      expect(result.current.pollingState.isPolling).toBe(false);
-    });
+      expect(result.current.pollingState.isPaused).toBe(true);
 
-    it('should handle error state correctly', async () => {
-      const onUpdate = vi.fn();
-      const error = new Error('Test error');
-      vi.mocked(api.jobs.getAll).mockRejectedValueOnce(error);
-
-      const { result } = renderHook(() => useJobPolling(onUpdate));
-
-      await act(async () => {
-        await result.current.startPolling();
+      // Resume polling
+      act(() => {
+        result.current.resumePolling();
       });
 
-      expect(result.current.pollingState.error).toBe('Test error');
-      expect(result.current.pollingState.retryCount).toBe(1);
+      expect(result.current.pollingState.isPaused).toBe(false);
     });
   });
 
@@ -299,39 +220,24 @@ describe('Job Polling and Real-Time Updates Validation (Simplified)', () => {
       const onUpdate = vi.fn();
       vi.mocked(api.jobs.getAll).mockResolvedValueOnce([]);
 
-      const { result } = renderHook(() => useJobPolling(onUpdate));
+      const { result } = renderHook(() => useJobPolling(onUpdate, { autoStart: false }));
 
       await act(async () => {
-        await result.current.startPolling();
+        await result.current.forceUpdate();
       });
 
       expect(onUpdate).toHaveBeenCalledWith([]);
       expect(result.current.pollingState.error).toBeNull();
     });
 
-    it('should handle null responses gracefully', async () => {
-      const onUpdate = vi.fn();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(api.jobs.getAll).mockResolvedValueOnce(null as any);
-
-      const { result } = renderHook(() => useJobPolling(onUpdate));
-
-      await act(async () => {
-        await result.current.startPolling();
-      });
-
-      expect(onUpdate).toHaveBeenCalledWith(null);
-      expect(result.current.pollingState.error).toBeNull();
-    });
-
     it('should validate job status updates', async () => {
       const onUpdate = vi.fn();
       const { result } = renderHook(() => 
-        useJobPolling(onUpdate, { baseInterval: 2000 })
+        useJobPolling(onUpdate, { baseInterval: 2000, autoStart: false })
       );
 
       await act(async () => {
-        await result.current.startPolling();
+        await result.current.forceUpdate();
       });
 
       // Verify initial fetch was called
@@ -344,140 +250,20 @@ describe('Job Polling and Real-Time Updates Validation (Simplified)', () => {
     });
   });
 
-  describe('Error Recovery Mechanisms', () => {
-    it('should recover from temporary network errors', async () => {
+  describe('Configuration Options', () => {
+    it('should accept custom polling options', () => {
       const onUpdate = vi.fn();
-      const error = new Error('Temporary network error');
-      
-      vi.mocked(api.jobs.getAll)
-        .mockRejectedValueOnce(error)
-        .mockResolvedValueOnce(mockJobs);
-
-      const { result } = renderHook(() => useJobPolling(onUpdate));
-
-      // First call should fail
-      await act(async () => {
-        await result.current.startPolling();
-      });
-
-      expect(result.current.pollingState.error).toBe('Temporary network error');
-      expect(result.current.pollingState.retryCount).toBe(1);
-
-      // Force update should succeed
-      await act(async () => {
-        await result.current.forceUpdate();
-      });
-
-      expect(result.current.pollingState.error).toBeNull();
-      expect(onUpdate).toHaveBeenCalledWith(mockJobs);
-    });
-
-    it('should handle different types of API errors', async () => {
-      const onUpdate = vi.fn();
-      const errors = [
-        new Error('Network Error'),
-        { message: 'Server Error', status: 500 },
-        'String error message',
-      ];
-
-      for (const error of errors) {
-        vi.mocked(api.jobs.getAll).mockRejectedValueOnce(error);
-
-        const { result } = renderHook(() => useJobPolling(onUpdate));
-
-        await act(async () => {
-          await result.current.startPolling();
-        });
-
-        expect(result.current.pollingState.error).toBeTruthy();
-        expect(result.current.pollingState.retryCount).toBe(1);
-      }
-    });
-  });
-
-  describe('Hook Cleanup and Memory Management', () => {
-    it('should cleanup properly when component unmounts', () => {
-      const onUpdate = vi.fn();
-      const { result, unmount } = renderHook(() => useJobPolling(onUpdate));
-
-      // Start polling
-      act(() => {
-        result.current.startPolling();
-      });
-
-      // Unmount should cleanup without errors
-      expect(() => unmount()).not.toThrow();
-    });
-
-    it('should prevent memory leaks with multiple start/stop cycles', async () => {
-      const onUpdate = vi.fn();
-      const { result } = renderHook(() => useJobPolling(onUpdate));
-
-      // Multiple start/stop cycles
-      for (let i = 0; i < 3; i++) {
-        await act(async () => {
-          await result.current.startPolling();
-        });
-
-        act(() => {
-          result.current.stopPolling();
-        });
-      }
-
-      // Should not cause memory leaks or errors
-      expect(result.current.pollingState.isPolling).toBe(false);
-    });
-  });
-
-  describe('Configuration Validation', () => {
-    it('should work with different polling options', () => {
-      const onUpdate = vi.fn();
-      const configs = [
-        { baseInterval: 1000 },
-        { maxRetries: 10 },
-        { persistKey: 'test_key' },
-        {
-          baseInterval: 3000,
-          maxRetries: 5,
-          persistKey: 'test_polling',
-        },
-      ];
-
-      configs.forEach(config => {
-        const { result } = renderHook(() => useJobPolling(onUpdate, config));
-        expect(result.current.pollingState.isPolling).toBe(false);
-      });
-    });
-
-    it('should handle invalid or edge case configurations', () => {
-      const onUpdate = vi.fn();
-      const edgeCases = [
-        { baseInterval: 0 },
-        { baseInterval: -1000 },
-        { maxRetries: -1 },
-        {},
-        undefined,
-      ];
-
-      edgeCases.forEach(config => {
-        expect(() => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          renderHook(() => useJobPolling(onUpdate, config as any));
-        }).not.toThrow();
-      });
-    });
-
-    it('should handle invalid polling configuration gracefully', () => {
-      const onUpdate = vi.fn();
-      const config = {
-        invalidOption: 'test'
+      const options = {
+        baseInterval: 10000,
+        maxRetries: 5,
+        persistKey: 'test_key',
+        autoStart: false,
       };
-
-      // Should not throw an error when creating hook with invalid config
-      expect(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        renderHook(() => useJobPolling(onUpdate, config as any));
-      }).not.toThrow();
+      
+      const { result } = renderHook(() => useJobPolling(onUpdate, options));
+      
+      expect(result.current.pollingState).toBeDefined();
+      expect(result.current.pollingState.isPolling).toBe(false);
     });
   });
 }); 

@@ -648,6 +648,35 @@ class UnifiedLLMService:
         self._default_provider = provider
         logger.info(f"Default LLM provider set to: {provider}")
     
+    async def get_available_models(self, provider: LLMProvider) -> List[str]:
+        """
+        Get available models for a specific provider
+        
+        Args:
+            provider: The LLM provider to get models for
+            
+        Returns:
+            List of available model names for the provider
+            
+        Raises:
+            ValueError: If provider is invalid
+            RuntimeError: If provider service is not available
+        """
+        if provider not in ["google", "openai", "grok", "anthropic", "deepseek", "llama"]:
+            raise ValueError(f"Invalid provider: {provider}")
+        
+        service = self._get_service_for_provider(provider)
+        if service is None:
+            raise RuntimeError(f"{provider} service is not available")
+        
+        try:
+            # Get the service's info which includes available models
+            info = service.get_info()
+            return info.get("available_models", [])
+        except Exception as e:
+            logger.error(f"Failed to get available models for {provider}: {e}")
+            raise RuntimeError(f"Failed to retrieve {provider} models: {str(e)}")
+    
     def test_all_connections(self) -> Dict[str, Any]:
         """Test connections to all available providers"""
         results = {}

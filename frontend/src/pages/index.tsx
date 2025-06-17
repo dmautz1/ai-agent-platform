@@ -76,11 +76,12 @@ export const DashboardPage: React.FC = () => {
   }, [updateStats]);
 
   // Initialize job polling
-  const { pollingState, startPolling, stopPolling, pausePolling, resumePolling, forceUpdate } = useJobPolling(
+  const { pollingState, pausePolling, resumePolling, forceUpdate } = useJobPolling(
     handleJobUpdate,
     {
       baseInterval: 5000,
       persistKey: 'dashboard_polling_paused',
+      autoStart: true
     }
   );
 
@@ -89,13 +90,9 @@ export const DashboardPage: React.FC = () => {
     // Load recent agents from localStorage
     setRecentAgents(getRecentAgents());
     
-    // Always fetch initial data
+    // Force an initial update to load data immediately
     forceUpdate();
-    // Start polling (will respect persisted pause state)
-    startPolling();
-    
-    return () => stopPolling();
-  }, [startPolling, stopPolling, forceUpdate]);
+  }, [forceUpdate]);
 
   // Handle URL parameters and polling errors
   useEffect(() => {

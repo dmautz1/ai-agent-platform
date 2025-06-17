@@ -1,7 +1,8 @@
+import React from 'react'
+import { render, screen, waitFor } from '@testing-library/react'
+import { JobForm } from '../../components/forms/JobForm'
 import { describe, it, expect, vi, beforeEach, type MockedFunction } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { JobForm } from '../../components/JobForm'
 import { renderWithProviders } from '../utils'
 
 // Mock the API module

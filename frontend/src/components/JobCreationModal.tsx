@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import type { AgentInfo } from '@/lib/models';
 
 // Dynamic imports for heavy components
-const JobForm = React.lazy(() => import('@/components/JobForm').then(module => ({ default: module.JobForm })));
+const JobForm = React.lazy(() => import('@/components/forms/JobForm').then(module => ({ default: module.JobForm })));
 const AgentDirectory = React.lazy(() => import('@/components/AgentDirectory').then(module => ({ default: module.AgentDirectory })));
 
 // Loading component for Suspense fallback

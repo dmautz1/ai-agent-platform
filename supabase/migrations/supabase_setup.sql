@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID,
     agent_identifier TEXT,
+    title TEXT,
     
     -- Job status and lifecycle
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed')),
@@ -147,6 +148,7 @@ COMMENT ON TABLE jobs IS 'Stores AI agent job information including status, inpu
 COMMENT ON COLUMN jobs.id IS 'Unique identifier for each job (UUID)';
 COMMENT ON COLUMN jobs.user_id IS 'ID of the user who created the job (references auth.users)';
 COMMENT ON COLUMN jobs.agent_identifier IS 'Generic string identifier for the agent that will process this job (e.g., simple_prompt, custom_research)';
+COMMENT ON COLUMN jobs.title IS 'Human-readable title for the job for identification and organization';
 COMMENT ON COLUMN jobs.status IS 'Current status of the job (pending, running, completed, failed)';
 COMMENT ON COLUMN jobs.priority IS 'Job priority level (0=low, 5=normal, 8=high, 10=critical)';
 COMMENT ON COLUMN jobs.tags IS 'Array of tags for job organization and filtering';

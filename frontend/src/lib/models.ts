@@ -105,6 +105,8 @@ export interface BaseJob {
 }
 
 export interface Job extends BaseJob {
+  agent_identifier?: string; // Top-level agent identifier field from database
+  title?: string; // Human-readable job title
   data: JobData;
   result?: string;
   result_format?: string;
@@ -405,6 +407,8 @@ export interface FormFieldSchema {
   maximum?: number;
   pattern?: string;
   form_field_type: string;
+  placeholder?: string;
+  anyOf?: Array<{ type: string; maxLength?: number; [key: string]: unknown }>;
 }
 
 export interface AgentSchema {

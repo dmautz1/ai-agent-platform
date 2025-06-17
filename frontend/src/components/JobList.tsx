@@ -190,11 +190,20 @@ export const JobList: React.FC<JobListProps> = ({
   };
 
   const getAgentIdentifierFromJob = (job: Job): string => {
-    return job.data?.agent_identifier || 'unknown';
+    // Agent identifier can be at top level or in job.data
+    return job.agent_identifier || job.data?.agent_identifier || 'unknown';
   };
 
-  const getTitleFromJob = (job: Job): string => {
-    return job.data?.title || `Job ${job.id.slice(0, 8)}`;
+  const getAgentDisplayName = (agentIdentifier: string): string => {
+    if (!agentIdentifier || agentIdentifier === 'unknown') {
+      return 'UNKNOWN';
+    }
+    
+    // Convert identifier to display name (simple_prompt -> Simple Prompt)
+    return agentIdentifier
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
   };
 
   const getAgentIdentifierDisplay = (agentIdentifier: string) => {
@@ -206,11 +215,17 @@ export const JobList: React.FC<JobListProps> = ({
       );
     }
     
+    const displayName = getAgentDisplayName(agentIdentifier);
+    
     return (
-      <span className="text-xs font-mono text-muted-foreground">
-        {agentIdentifier.replace(/_/g, ' ').toUpperCase()}
+      <span className="text-xs text-muted-foreground" title={agentIdentifier}>
+        {displayName}
       </span>
     );
+  };
+
+  const getTitleFromJob = (job: Job): string => {
+    return job.title || job.data?.title || `Job ${job.id.slice(0, 8)}`;
   };
 
   // Mobile card component for each job

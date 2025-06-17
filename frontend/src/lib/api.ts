@@ -147,7 +147,7 @@ export const api = {
         }, {} as Record<string, string>)
       ) : undefined;
       
-      const response = await apiClient.get<JobListResponse>('/jobs', { params });
+      const response = await apiClient.get<JobListResponse>('/jobs/list', { params });
       return response.data.jobs || [];
     },
 
@@ -166,7 +166,7 @@ export const api = {
         }, {} as Record<string, string>)
       ) : undefined;
       
-      const response = await apiClient.get<JobListResponse>('/jobs', { params });
+      const response = await apiClient.get<JobListResponse>('/jobs/list', { params });
       
       // Convert backend JobListResponse to frontend JobsListResponse format
       return {
@@ -194,7 +194,7 @@ export const api = {
 
     // Create new job
     create: async (jobData: CreateJobRequest): Promise<CreateJobResponse> => {
-      const response = await apiClient.post<CreateJobResponse>('/jobs', jobData);
+      const response = await apiClient.post<CreateJobResponse>('/jobs/create', jobData);
       if (!response.data.job_id) {
         throw new Error('Failed to create job');
       }
@@ -253,23 +253,38 @@ export const api = {
     },
 
     // Rerun any job (creates new job with same config)
-    rerun: async (id: string): Promise<{ original_job_id: string; new_job_id: string; original_job_status: string; data: Job }> => {
+    rerun: async (id: string): Promise<{ original_job_id: string; new_job_id: string; original_job_status?: string; data?: Job }> => {
       const response = await apiClient.post<{
         success: boolean;
         message?: string;
         original_job_id: string;
-        new_job_id: string;
-        original_job_status: string;
-        data: Job;
+        rerun_job?: {
+          id: string;
+          status: string;
+          created_at: string;
+          agent_identifier: string;
+        };
+        // Fallback for different endpoint format
+        new_job_id?: string;
+        new_job?: any;
       }>(`/jobs/${id}/rerun`);
+      
       if (!response.data.success) {
         throw new Error(response.data.message || 'Failed to rerun job');
       }
+      
+      // Handle both response formats
+      const new_job_id = response.data.rerun_job?.id || response.data.new_job_id || response.data.new_job?.id;
+      
+      if (!new_job_id) {
+        throw new Error('Invalid rerun response: no new job ID found');
+      }
+      
       return {
         original_job_id: response.data.original_job_id,
-        new_job_id: response.data.new_job_id,
-        original_job_status: response.data.original_job_status,
-        data: response.data.data
+        new_job_id,
+        original_job_status: undefined, // Not provided by the current endpoint
+        data: response.data.rerun_job as Job || response.data.new_job as Job
       };
     },
 
@@ -284,11 +299,11 @@ export const api = {
   agents: {
     // NEW: Get all agents from discovery system
     getAll: async (): Promise<AgentInfo[]> => {
-      const response = await apiClient.get<{ agents?: Record<string, AgentInfo> }>('/agents');
-      const agents = response.data?.agents || {};
+      const response = await apiClient.get<{ agents?: any[] }>('/agents');
+      const agents = response.data?.agents || [];
       
-      // Convert the agents object to an array of AgentInfo
-      return Object.values(agents).map((agent: AgentInfo) => ({
+      // Convert the backend agent data to frontend AgentInfo format
+      return agents.map((agent: any): AgentInfo => ({
         identifier: agent.identifier,
         name: agent.name,
         description: agent.description,
@@ -296,18 +311,20 @@ export const api = {
         lifecycle_state: agent.lifecycle_state,
         supported_environments: agent.supported_environments || [],
         version: agent.version || '1.0.0',
-        enabled: agent.enabled,
-        has_error: agent.has_error,
-        error_message: agent.error_message,
+        enabled: agent.lifecycle_state === 'enabled' && agent.is_loaded === true,
+        has_error: agent.status === 'error' || Boolean(agent.error_message) || Boolean(agent.load_error),
+        error_message: agent.error_message || agent.load_error || null,
         created_at: agent.created_at,
-        last_updated: agent.last_updated
+        last_updated: agent.last_updated,
+        runtime_info: agent.runtime_info,
+        instance_available: agent.is_loaded
       }));
     },
 
     // NEW: Get detailed agent information by identifier
     getById: async (agentId: string): Promise<AgentInfo> => {
-      const response = await apiClient.get<{ agent?: AgentInfo }>(`/agents/${agentId}`);
-      const agent = response.data?.agent;
+      const response = await apiClient.get<any>(`/agents/${agentId}`);
+      const agent = response.data;
       
       if (!agent) {
         throw new Error(`Agent ${agentId} not found`);
@@ -321,13 +338,13 @@ export const api = {
         lifecycle_state: agent.lifecycle_state,
         supported_environments: agent.supported_environments || [],
         version: agent.version || '1.0.0',
-        enabled: agent.enabled,
-        has_error: agent.has_error,
-        error_message: agent.error_message,
+        enabled: agent.lifecycle_state === 'enabled' && agent.is_loaded === true,
+        has_error: agent.status === 'error' || Boolean(agent.error_message) || Boolean(agent.load_error),
+        error_message: agent.error_message || agent.load_error || null,
         created_at: agent.created_at,
         last_updated: agent.last_updated,
         runtime_info: agent.runtime_info,
-        instance_available: agent.instance_available
+        instance_available: agent.is_loaded
       };
     },
 
