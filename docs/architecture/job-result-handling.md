@@ -84,7 +84,7 @@ The API transmits results as strings within the JobResponse:
 The frontend types match the backend:
 
 ```typescript
-// Frontend models.ts
+// Frontend lib/types/job.ts
 export interface Job {
   result?: string;  // Expects a JSON string
 }

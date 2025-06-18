@@ -57,7 +57,18 @@ export const JobList: React.FC<JobListProps> = ({
   const fetchJobs = useCallback(async (isRefresh = false) => {
     // If external data management is provided, use the external refresh function
     if (externalJobs && onRefresh) {
-      await onRefresh();
+      try {
+        await onRefresh();
+      } catch (err) {
+        // Handle external refresh errors gracefully
+        console.warn('External refresh failed:', err);
+        if (isRefresh) {
+          const errorMessage = handleApiError(err);
+          toast.error('Failed to refresh jobs', { title: errorMessage });
+        }
+        // Re-throw the error so the caller knows it failed
+        throw err;
+      }
       return;
     }
 
@@ -85,11 +96,13 @@ export const JobList: React.FC<JobListProps> = ({
       } else {
         toast.error('Failed to refresh jobs');
       }
+      // Re-throw the error so the caller knows it failed
+      throw err;
     } finally {
       setInternalLoading(false);
       setInternalRefreshing(false);
     }
-  }, [externalJobs, onRefresh, toast]);
+  }, [externalJobs, onRefresh, toast, handleApiError]);
 
   const handleRerunJob = async (job: Job, event: React.MouseEvent) => {
     event.stopPropagation();
@@ -100,7 +113,7 @@ export const JobList: React.FC<JobListProps> = ({
       const result = await api.jobs.rerun(job.id);
       
       toast.success(
-        `Job rerun successful! New job created.`,
+        `Job rerun initiated successfully! Processing new job...`,
         {
           title: `Original: ${job.id.slice(0, 8)}... → New: ${result.new_job_id.slice(0, 8)}...`,
           action: {
@@ -110,8 +123,13 @@ export const JobList: React.FC<JobListProps> = ({
         }
       );
       
-      // Refresh job list to show the new job
-      await fetchJobs(true);
+      // Try to refresh job list to show the new job, but don't fail if refresh fails
+      try {
+        await fetchJobs(true);
+      } catch (refreshError) {
+        // Silently handle refresh errors - the rerun was successful regardless
+        console.warn('Failed to refresh job list after rerun:', refreshError);
+      }
       
       // Navigate to the new job after a short delay
       setTimeout(() => {
@@ -191,7 +209,8 @@ export const JobList: React.FC<JobListProps> = ({
 
   const getAgentIdentifierFromJob = (job: Job): string => {
     // Agent identifier can be at top level or in job.data
-    return job.agent_identifier || job.data?.agent_identifier || 'unknown';
+    const dataAgentId = typeof job.data?.agent_identifier === 'string' ? job.data.agent_identifier : undefined;
+    return job.agent_identifier || dataAgentId || 'unknown';
   };
 
   const getAgentDisplayName = (agentIdentifier: string): string => {
@@ -225,7 +244,8 @@ export const JobList: React.FC<JobListProps> = ({
   };
 
   const getTitleFromJob = (job: Job): string => {
-    return job.title || job.data?.title || `Job ${job.id.slice(0, 8)}`;
+    const dataTitle = typeof job.data?.title === 'string' ? job.data.title : undefined;
+    return job.title || dataTitle || `Job ${job.id.slice(0, 8)}`;
   };
 
   // Mobile card component for each job

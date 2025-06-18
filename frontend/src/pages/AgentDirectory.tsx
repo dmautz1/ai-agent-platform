@@ -6,7 +6,7 @@ import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, User, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { AgentInfo } from '@/lib/models';
+import type { AgentInfo } from '@/lib/types';
 
 // Dynamic import for heavy component
 const AgentDirectoryComponent = React.lazy(() => import('@/components/AgentDirectory').then(module => ({ default: module.AgentDirectory })));
@@ -71,7 +71,7 @@ export const AgentDirectoryPage: React.FC = () => {
             <div className="flex items-center gap-2 px-2 py-1 rounded-lg border sm:px-3 sm:py-2">
               <User className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium max-w-[100px] truncate sm:max-w-none">
-                {user?.name || user?.email}
+                {user?.email}
               </span>
               <Button 
                 variant="ghost" 

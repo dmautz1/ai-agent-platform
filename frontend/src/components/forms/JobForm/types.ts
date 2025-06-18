@@ -1,5 +1,5 @@
 import type { Control, FieldErrors } from 'react-hook-form';
-import type { FormFieldSchema } from '@/lib/models';
+import type { FormFieldSchema } from '@/lib/types';
 
 // JobForm component types and interfaces
 export interface DynamicJobFormProps {

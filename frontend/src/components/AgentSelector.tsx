@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api, handleApiError } from '@/lib/api';
-import type { AgentInfo } from '@/lib/models';
+import type { AgentInfo } from '@/lib/types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, XCircle, AlertCircle, Clock, Search, Star } from 'lucide-react';
+import { CheckCircle, AlertCircle, Clock, Search, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface AgentSelectorProps {
@@ -30,39 +30,42 @@ interface AgentSelectorProps {
   placeholder?: string;
 }
 
-// Helper function to get agent status icon and color
+const isAgentAvailable = (agent: AgentInfo): boolean => {
+  return agent.lifecycle_state === 'enabled' && agent.status === 'available' && !agent.has_error;
+};
+
 const getAgentStatusInfo = (agent: AgentInfo) => {
-  if (agent.has_error) {
-    return {
-      icon: <XCircle className="h-3 w-3" />,
-      color: 'text-red-500',
-      badge: 'destructive' as const,
-      text: 'Error'
-    };
-  }
-  
-  if (!agent.enabled) {
-    return {
-      icon: <AlertCircle className="h-3 w-3" />,
-      color: 'text-yellow-500',
-      badge: 'secondary' as const,
-      text: 'Disabled'
-    };
-  }
-  
-  if (agent.lifecycle_state === 'loading') {
-    return {
-      icon: <Clock className="h-3 w-3" />,
-      color: 'text-blue-500',
-      badge: 'secondary' as const,
-      text: 'Loading'
-    };
+  // Check if agent is available for job creation
+  if (!isAgentAvailable(agent)) {
+    if (agent.has_error) {
+      return {
+        icon: <AlertCircle className="h-3 w-3" />,
+        color: 'text-red-500',
+        text: 'Error',
+        disabled: true,
+      };
+    }
+    if (agent.lifecycle_state !== 'enabled') {
+      return {
+        icon: <AlertCircle className="h-3 w-3" />,
+        color: 'text-gray-500',
+        text: 'Disabled',
+        disabled: true,
+      };
+    }
+    if (agent.status !== 'available') {
+      return {
+        icon: <AlertCircle className="h-3 w-3" />,
+        color: 'text-gray-500',
+        text: agent.status === 'loading' ? 'Loading' : 'Unavailable',
+        disabled: true,
+      };
+    }
   }
   
   return {
     icon: <CheckCircle className="h-3 w-3" />,
     color: 'text-green-500',
-    badge: 'secondary' as const,
     text: 'Ready'
   };
 };
@@ -79,7 +82,7 @@ const AgentSelectItem: React.FC<{
     <SelectItem 
       value={agent.identifier} 
       className="py-3"
-      disabled={agent.has_error || !agent.enabled}
+      disabled={statusInfo.disabled}
     >
       <div className="flex items-start justify-between w-full gap-2">
         <div className="flex-1 min-w-0">
@@ -177,7 +180,7 @@ export const AgentSelector: React.FC<AgentSelectorProps> = ({
 
   // Filter out agents that are available (not in error state)
   const availableAgents = useMemo(() => {
-    return sortedAgents.filter(agent => !agent.has_error && agent.enabled);
+    return sortedAgents.filter(agent => isAgentAvailable(agent));
   }, [sortedAgents]);
 
   // Get section headers

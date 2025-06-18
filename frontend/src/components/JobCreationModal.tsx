@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { AgentSelector } from '@/components/AgentSelector';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { AgentInfo } from '@/lib/models';
+import type { AgentInfo } from '@/lib/types';
 
 // Dynamic imports for heavy components
 const JobForm = React.lazy(() => import('@/components/forms/JobForm').then(module => ({ default: module.JobForm })));

@@ -3,8 +3,8 @@ import { render } from '@testing-library/react'
 import type { RenderOptions } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import { vi } from 'vitest'
-import { ToastProvider } from '@/components/ui/toast'
-import type { Job } from '@/lib/models'
+import type { Job } from '../lib/types'
+import { ToastProvider } from '../components/ui/toast'
 
 // Mock the Supabase client
 export const mockSupabaseClient = {
@@ -49,10 +49,10 @@ export const mockSupabaseClient = {
 
 // Mock axios
 export const mockAxios = {
-  get: vi.fn(() => Promise.resolve({ data: { data: [] } })),
-  post: vi.fn(() => Promise.resolve({ data: { data: {} } })),
-  put: vi.fn(() => Promise.resolve({ data: { data: {} } })),
-  delete: vi.fn(() => Promise.resolve({ data: { data: {} } })),
+  get: vi.fn(() => Promise.resolve({ data: {} })),
+  post: vi.fn(() => Promise.resolve({ data: {} })),
+  put: vi.fn(() => Promise.resolve({ data: {} })),
+  delete: vi.fn(() => Promise.resolve({ data: {} })),
   interceptors: {
     request: { use: vi.fn() },
     response: { use: vi.fn() },
@@ -64,12 +64,8 @@ export const mockAuthContext = {
   user: {
     id: 'test-user-id',
     email: 'test@example.com',
-    name: 'Test User',
-    role: 'user' as const,
-    is_active: true,
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z',
-    last_login: '2024-01-01T00:00:00Z',
+    user_metadata: { name: 'Test User' },
+    app_metadata: {},
   },
   loading: false,
   session: null,
@@ -89,7 +85,7 @@ export const mockJob: Job = {
   id: '123e4567-e89b-12d3-a456-426614174000',
   user_id: 'test-user-id',
   status: 'completed' as const,
-  priority: 'normal' as const,
+  priority: 3,
   data: {
     agent_identifier: 'example_research_agent',
     title: 'Test Research Job',
@@ -139,7 +135,7 @@ export const mockJobs = [
   createMockJob({
     id: 'abc12345-e89b-12d3-a456-426614174001',
     status: 'running',
-    priority: 'high',
+    priority: 5,
     data: {
       agent_identifier: 'content_summarizer',
       title: 'Document Summary Job',
@@ -152,7 +148,7 @@ export const mockJobs = [
   createMockJob({
     id: 'def67890-e89b-12d3-a456-426614174002',
     status: 'failed',
-    priority: 'low',
+    priority: 1,
     data: {
       agent_identifier: 'web_data_extractor', 
       title: 'Web Data Extraction Job',
@@ -187,11 +183,11 @@ export function renderWithProviders(
 
   function Wrapper({ children }: { children: React.ReactNode }) {
     return (
-      <ToastProvider maxToasts={3}>
-        <BrowserRouter>
+      <BrowserRouter>
+        <ToastProvider>
           {children}
-        </BrowserRouter>
-      </ToastProvider>
+        </ToastProvider>
+      </BrowserRouter>
     )
   }
 
@@ -207,11 +203,11 @@ export function renderWithAuth(
 
   function Wrapper({ children }: { children: React.ReactNode }) {
     return (
-      <ToastProvider maxToasts={3}>
-        <BrowserRouter>
+      <BrowserRouter>
+        <ToastProvider>
           {children}
-        </BrowserRouter>
-      </ToastProvider>
+        </ToastProvider>
+      </BrowserRouter>
     )
   }
 
@@ -223,18 +219,17 @@ export const mockApiResponses = {
   jobs: {
     success: {
       data: {
-        data: mockJobs,
-        pagination: {
-          page: 1,
-          limit: 10,
-          total: mockJobs.length,
-        },
+        success: true,
+        jobs: mockJobs,
+        total_count: mockJobs.length,
+        message: "Jobs retrieved successfully"
       },
     },
     error: {
       response: {
         status: 500,
         data: {
+          success: false,
           error: 'Internal server error',
           message: 'Something went wrong',
         },
@@ -244,13 +239,16 @@ export const mockApiResponses = {
   job: {
     success: {
       data: {
-        data: mockJob,
+        success: true,
+        job: mockJob,
+        message: "Job retrieved successfully"
       },
     },
     notFound: {
       response: {
         status: 404,
         data: {
+          success: false,
           error: 'Not found',
           message: 'Job not found',
         },
@@ -260,10 +258,15 @@ export const mockApiResponses = {
   agents: {
     success: {
       data: {
-        agents: mockAgents.reduce((acc, agent) => {
-          acc[agent.identifier] = agent;
-          return acc;
-        }, {} as Record<string, typeof mockAgents[0]>),
+        success: true,
+        agents: mockAgents,
+        total_count: mockAgents.length,
+        loaded_count: mockAgents.length,
+        discovery_info: {
+          last_scan: new Date().toISOString(),
+          scan_count: 1
+        },
+        message: `Found ${mockAgents.length} agents`
       },
     },
   },

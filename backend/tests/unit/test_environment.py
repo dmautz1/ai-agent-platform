@@ -20,61 +20,51 @@ from config.environment import (
     get_logging_config
 )
 
+# Test environment variables - use JWT_SECRET instead of SECRET_KEY to match Settings field
+TEST_ENV_VARS = {
+    'JWT_SECRET': 'test-jwt-secret-key-for-testing-purposes',
+    'SUPABASE_URL': 'https://test.supabase.co',
+    'SUPABASE_KEY': 'test-key'
+}
+
 class TestEnvironmentSettings(unittest.TestCase):
     """Test cases for environment settings functionality"""
     
     def setUp(self):
         """Set up test environment"""
-        # Store original env vars
-        self.original_env = {}
-        for key in os.environ:
-            if key.startswith(('ENVIRONMENT', 'APP_', 'DEBUG', 'HOST', 'PORT', 'SECRET_KEY', 
-                              'SUPABASE_', 'GOOGLE_', 'DEFAULT_LLM_PROVIDER', 'MAX_CONCURRENT', 'JOB_TIMEOUT', 
-                              'LOG_', 'CORS_')):
-                self.original_env[key] = os.environ[key]
+        # Clear any existing settings
+        import config.environment
+        config.environment._settings = None
         
-        # Clear relevant env vars for clean test
-        env_vars_to_clear = [
-            'ENVIRONMENT', 'APP_NAME', 'APP_VERSION', 'DEBUG', 'HOST', 'PORT',
-            'SECRET_KEY', 'SUPABASE_URL', 'SUPABASE_KEY', 'SUPABASE_SERVICE_KEY',
-            'GOOGLE_API_KEY', 'GOOGLE_CLOUD_PROJECT', 'GOOGLE_CLOUD_LOCATION',
-            'GOOGLE_GENAI_USE_VERTEXAI', 'GOOGLE_DEFAULT_MODEL', 'DEFAULT_LLM_PROVIDER',
-            'MAX_CONCURRENT_JOBS', 'JOB_TIMEOUT_SECONDS',
-            'LOG_LEVEL', 'LOG_FORMAT', 'CORS_ORIGINS', 'CORS_ALLOW_CREDENTIALS', 'CORS_MAX_AGE'
-        ]
-        
-        for var in env_vars_to_clear:
-            if var in os.environ:
-                del os.environ[var]
-    
-    def tearDown(self):
-        """Clean up test environment"""
-        # Clear test env vars
-        env_vars_to_clear = [
-            'ENVIRONMENT', 'APP_NAME', 'APP_VERSION', 'DEBUG', 'HOST', 'PORT',
-            'SECRET_KEY', 'SUPABASE_URL', 'SUPABASE_KEY', 'SUPABASE_SERVICE_KEY',
-            'GOOGLE_API_KEY', 'GOOGLE_CLOUD_PROJECT', 'GOOGLE_CLOUD_LOCATION',
-            'GOOGLE_GENAI_USE_VERTEXAI', 'GOOGLE_DEFAULT_MODEL', 'DEFAULT_LLM_PROVIDER',
-            'MAX_CONCURRENT_JOBS', 'JOB_TIMEOUT_SECONDS',
-            'LOG_LEVEL', 'LOG_FORMAT', 'CORS_ORIGINS', 'CORS_ALLOW_CREDENTIALS', 'CORS_MAX_AGE'
-        ]
-        
-        for var in env_vars_to_clear:
-            if var in os.environ:
-                del os.environ[var]
-        
-        # Restore original env vars
-        for key, value in self.original_env.items():
+        # Set test environment variables
+        for key, value in TEST_ENV_VARS.items():
             os.environ[key] = value
+
+    def tearDown(self):
+        """Clean up after tests"""
+        # Clear settings cache to avoid cross-test contamination
+        import config.environment
+        config.environment._settings = None
+        
+        # Clean up environment variables
+        for key in TEST_ENV_VARS.keys():
+            if key in os.environ:
+                del os.environ[key]
+        
+        # Clean up any additional environment variables set during tests
+        test_vars = [
+            'ENVIRONMENT', 'APP_NAME', 'APP_VERSION', 'DEBUG', 'HOST', 'PORT',
+            'GOOGLE_API_KEY', 'MAX_CONCURRENT_JOBS', 'LOG_LEVEL', 'DEFAULT_LLM_PROVIDER',
+            'ALLOWED_ORIGINS'
+        ]
+        for var in test_vars:
+            if var in os.environ:
+                del os.environ[var]
 
     def test_default_settings(self):
         """Test default settings values"""
         # Set required fields and clear any existing env overrides
-        with patch.dict(os.environ, {
-            'SECRET_KEY': 'test-secret-key',
-            'SUPABASE_URL': 'https://test.supabase.co',
-            'SUPABASE_KEY': 'test-key'
-        }, clear=True):
+        with patch.dict(os.environ, TEST_ENV_VARS, clear=True):
             settings = Settings()
             
             # Test defaults (note: .env file may override some values)
@@ -92,68 +82,61 @@ class TestEnvironmentSettings(unittest.TestCase):
 
     def test_environment_override(self):
         """Test environment variable overrides"""
-        os.environ.update({
+        test_env = {
+            **TEST_ENV_VARS,
             'ENVIRONMENT': 'PRODUCTION',
             'APP_NAME': 'AI Agent Platform',
             'APP_VERSION': '1.0.0',
             'DEBUG': 'true',
             'HOST': '127.0.0.1',
             'PORT': '9000',
-            'SECRET_KEY': 'test-secret-key',
-            'SUPABASE_URL': 'https://test.supabase.co',
-            'SUPABASE_KEY': 'test-key',
             'GOOGLE_API_KEY': 'google-key',
             'MAX_CONCURRENT_JOBS': '20',
             'LOG_LEVEL': 'DEBUG'
-        })
+        }
         
-        settings = Settings()
-        
-        # Test overridden values
-        self.assertEqual(settings.environment, Environment.PRODUCTION)
-        self.assertEqual(settings.app_name, "AI Agent Platform")
-        self.assertEqual(settings.app_version, "1.0.0")
-        self.assertTrue(settings.debug)
-        self.assertEqual(settings.host, "127.0.0.1")
-        self.assertEqual(settings.port, 9000)
-        self.assertEqual(settings.google_api_key, 'google-key')
-        self.assertEqual(settings.max_concurrent_jobs, 20)
-        self.assertEqual(settings.log_level, LogLevel.DEBUG)
+        with patch.dict(os.environ, test_env, clear=True):
+            settings = Settings()
+            
+            # Test overridden values
+            self.assertEqual(settings.environment, Environment.PRODUCTION)
+            self.assertEqual(settings.app_name, "AI Agent Platform")
+            self.assertEqual(settings.app_version, "1.0.0")
+            self.assertTrue(settings.debug)
+            self.assertEqual(settings.host, "127.0.0.1")
+            self.assertEqual(settings.port, 9000)
+            self.assertEqual(settings.google_api_key, 'google-key')
+            self.assertEqual(settings.max_concurrent_jobs, 20)
+            self.assertEqual(settings.log_level, LogLevel.DEBUG)
 
     def test_environment_validation(self):
         """Test environment validation"""
-        # Set required fields
-        os.environ.update({
-            'SECRET_KEY': 'test-secret-key',
-            'SUPABASE_URL': 'https://test.supabase.co',
-            'SUPABASE_KEY': 'test-key'
-        })
-        
         # Test valid environments
         for env in ['development', 'staging', 'production']:
-            os.environ['ENVIRONMENT'] = env
-            settings = Settings()
-            self.assertEqual(settings.environment.value, env)
+            test_env = {**TEST_ENV_VARS, 'ENVIRONMENT': env}
+            with patch.dict(os.environ, test_env, clear=True):
+                settings = Settings()
+                self.assertEqual(settings.environment.value, env)
 
     def test_cors_origins_development(self):
         """Test CORS origins for development environment"""
-        with patch.dict(os.environ, {
-            'ENVIRONMENT': 'DEVELOPMENT',
-            'SECRET_KEY': 'test-secret-key',
-            'SUPABASE_URL': 'https://test.supabase.co',
-            'SUPABASE_KEY': 'test-key'
-        }, clear=True):
+        test_env = {
+            **TEST_ENV_VARS,
+            'ENVIRONMENT': 'DEVELOPMENT'
+        }
+        with patch.dict(os.environ, test_env, clear=True):
             settings = Settings()
             origins = settings.get_cors_origins()
             
-            # Check that it includes the expected development origins
+            # Development should include local development ports
             expected_origins = [
                 "http://localhost:3000",
-                "http://localhost:3001", 
+                "http://localhost:5173",
                 "http://127.0.0.1:3000",
-                "http://127.0.0.1:3001"
+                "http://127.0.0.1:5173"
             ]
             
+            # Check that all expected origins are present
             for expected in expected_origins:
                 self.assertIn(expected, origins)
             
@@ -162,12 +145,11 @@ class TestEnvironmentSettings(unittest.TestCase):
 
     def test_cors_origins_production(self):
         """Test CORS origins for production environment"""
-        with patch.dict(os.environ, {
-            'ENVIRONMENT': 'PRODUCTION',
-            'SECRET_KEY': 'test-secret-key',
-            'SUPABASE_URL': 'https://test.supabase.co',
-            'SUPABASE_KEY': 'test-key'
-        }, clear=True):
+        test_env = {
+            **TEST_ENV_VARS,
+            'ENVIRONMENT': 'PRODUCTION'
+        }
+        with patch.dict(os.environ, test_env, clear=True):
             settings = Settings()
             origins = settings.get_cors_origins()
             
@@ -181,56 +163,38 @@ class TestEnvironmentSettings(unittest.TestCase):
 
     def test_environment_helper_methods(self):
         """Test environment helper methods"""
-        # Set required fields
-        os.environ.update({
-            'SECRET_KEY': 'test-secret-key',
-            'SUPABASE_URL': 'https://test.supabase.co',
-            'SUPABASE_KEY': 'test-key'
-        })
-        
         # Test development
-        os.environ['ENVIRONMENT'] = 'DEVELOPMENT'
-        settings = Settings()
-        self.assertTrue(settings.is_development())
-        self.assertFalse(settings.is_production())
-        self.assertFalse(settings.is_staging())
+        test_env = {**TEST_ENV_VARS, 'ENVIRONMENT': 'DEVELOPMENT'}
+        with patch.dict(os.environ, test_env, clear=True):
+            settings = Settings()
+            self.assertTrue(settings.is_development())
+            self.assertFalse(settings.is_production())
+            self.assertFalse(settings.is_staging())
         
         # Test production
-        os.environ['ENVIRONMENT'] = 'PRODUCTION'
-        settings = Settings()
-        self.assertFalse(settings.is_development())
-        self.assertTrue(settings.is_production())
-        self.assertFalse(settings.is_staging())
+        test_env = {**TEST_ENV_VARS, 'ENVIRONMENT': 'PRODUCTION'}
+        with patch.dict(os.environ, test_env, clear=True):
+            settings = Settings()
+            self.assertFalse(settings.is_development())
+            self.assertTrue(settings.is_production())
+            self.assertFalse(settings.is_staging())
 
     def test_default_llm_provider_setting(self):
         """Test default LLM provider configuration"""
-        # Set required fields
-        with patch.dict(os.environ, {
-            'SECRET_KEY': 'test-secret-key',
-            'SUPABASE_URL': 'https://test.supabase.co',
-            'SUPABASE_KEY': 'test-key'
-        }, clear=True):
-            # Test default value
+        # Test default value
+        with patch.dict(os.environ, TEST_ENV_VARS, clear=True):
             settings = Settings()
             self.assertEqual(settings.default_llm_provider, "google")
             
         # Test custom value
-        with patch.dict(os.environ, {
-            'SECRET_KEY': 'test-secret-key',
-            'SUPABASE_URL': 'https://test.supabase.co',
-            'SUPABASE_KEY': 'test-key',
-            'DEFAULT_LLM_PROVIDER': 'openai'
-        }, clear=True):
+        test_env = {**TEST_ENV_VARS, 'DEFAULT_LLM_PROVIDER': 'openai'}
+        with patch.dict(os.environ, test_env, clear=True):
             settings = Settings()
             self.assertEqual(settings.default_llm_provider, "openai")
             
         # Test invalid provider should raise validation error
-        with patch.dict(os.environ, {
-            'SECRET_KEY': 'test-secret-key',
-            'SUPABASE_URL': 'https://test.supabase.co',
-            'SUPABASE_KEY': 'test-key',
-            'DEFAULT_LLM_PROVIDER': 'invalid_provider'
-        }, clear=True):
+        test_env = {**TEST_ENV_VARS, 'DEFAULT_LLM_PROVIDER': 'invalid_provider'}
+        with patch.dict(os.environ, test_env, clear=True):
             with self.assertRaises(Exception):  # Should raise validation error
                 Settings()
     
@@ -239,12 +203,8 @@ class TestEnvironmentSettings(unittest.TestCase):
         valid_providers = ["google", "openai", "anthropic", "grok", "deepseek", "llama"]
         
         for provider in valid_providers:
-            with patch.dict(os.environ, {
-                'SECRET_KEY': 'test-secret-key',
-                'SUPABASE_URL': 'https://test.supabase.co',
-                'SUPABASE_KEY': 'test-key',
-                'DEFAULT_LLM_PROVIDER': provider
-            }, clear=True):
+            test_env = {**TEST_ENV_VARS, 'DEFAULT_LLM_PROVIDER': provider}
+            with patch.dict(os.environ, test_env, clear=True):
                 settings = Settings()
                 self.assertEqual(settings.default_llm_provider, provider)
 
@@ -259,11 +219,7 @@ class TestEnvironmentFunctions(unittest.TestCase):
 
     def test_validate_required_settings_success(self):
         """Test validation with all required settings present"""
-        with patch.dict(os.environ, {
-            'SECRET_KEY': 'test-secret-key',
-            'SUPABASE_URL': 'https://test.supabase.co',
-            'SUPABASE_KEY': 'test-key'
-        }):
+        with patch.dict(os.environ, TEST_ENV_VARS):
             # Should not raise an exception
             validate_required_settings()
 
@@ -277,12 +233,12 @@ class TestEnvironmentFunctions(unittest.TestCase):
         with patch('config.environment.Settings') as mock_settings_class:
             # Mock the Settings class to raise validation error
             def mock_init(*args, **kwargs):
-                raise ValueError("Missing required environment variables: SECRET_KEY")
+                raise ValueError("Missing required environment variables: JWT_SECRET")
             mock_settings_class.side_effect = mock_init
             
             with self.assertRaises(ValueError) as context:
                 validate_required_settings()
-            self.assertIn('SECRET_KEY', str(context.exception))
+            self.assertIn('JWT_SECRET', str(context.exception))
 
     def test_validate_required_settings_missing_supabase(self):
         """Test validation with missing Supabase settings"""
@@ -304,12 +260,8 @@ class TestEnvironmentFunctions(unittest.TestCase):
 
     def test_get_logging_config(self):
         """Test logging configuration generation"""
-        with patch.dict(os.environ, {
-            'SECRET_KEY': 'test-secret-key',
-            'SUPABASE_URL': 'https://test.supabase.co',
-            'SUPABASE_KEY': 'test-key',
-            'LOG_LEVEL': 'DEBUG'
-        }):
+        test_env = {**TEST_ENV_VARS, 'LOG_LEVEL': 'DEBUG'}
+        with patch.dict(os.environ, test_env):
             config = get_logging_config()
             
             self.assertIn('version', config)
@@ -324,11 +276,7 @@ class TestEnvironmentFunctions(unittest.TestCase):
 
     def test_settings_singleton(self):
         """Test that get_settings returns the same instance"""
-        with patch.dict(os.environ, {
-            'SECRET_KEY': 'test-secret-key',
-            'SUPABASE_URL': 'https://test.supabase.co',
-            'SUPABASE_KEY': 'test-key'
-        }):
+        with patch.dict(os.environ, TEST_ENV_VARS):
             settings1 = get_settings()
             settings2 = get_settings()
             
@@ -336,12 +284,8 @@ class TestEnvironmentFunctions(unittest.TestCase):
 
     def test_reload_settings(self):
         """Test settings reload functionality"""
-        with patch.dict(os.environ, {
-            'SECRET_KEY': 'test-secret-key',
-            'SUPABASE_URL': 'https://test.supabase.co',
-            'SUPABASE_KEY': 'test-key',
-            'APP_NAME': 'Original Name'
-        }):
+        test_env = {**TEST_ENV_VARS, 'APP_NAME': 'Original Name'}
+        with patch.dict(os.environ, test_env):
             settings1 = get_settings()
             self.assertEqual(settings1.app_name, 'Original Name')
             

@@ -24,6 +24,14 @@ class PromptJobData(BaseModel):
         min_length=1,
         max_length=2000
     )
+    provider: Optional[str] = Field(
+        default=None,
+        description="LLM provider to use (e.g., 'google', 'openai', 'anthropic'). If not specified, the default provider will be used."
+    )
+    model: Optional[str] = Field(
+        default=None,
+        description="Specific model to use within the provider (e.g., 'gemini-2.0-flash', 'gpt-4'). If not specified, the provider's default model will be used."
+    )
     temperature: float = Field(
         default=0.8,
         description="Controls randomness in responses (0.0 = deterministic, 2.0 = very creative)",
@@ -64,9 +72,9 @@ class SimplePromptAgent(SelfContainedAgent):
             # Use custom system instruction if provided, otherwise use default
             system_instruction = job_data.system_instruction or self._get_system_instruction()
             
-            # Get provider and model from job data (passed from frontend LLM selector)
-            provider = getattr(job_data, 'provider', None)
-            model = getattr(job_data, 'model', None)
+            # Get provider and model from job data
+            provider = job_data.provider
+            model = job_data.model
             
             response = await self.llm_service.query(
                 prompt=job_data.prompt,
@@ -109,9 +117,9 @@ class SimplePromptAgent(SelfContainedAgent):
             # Use custom system instruction if provided, otherwise use default
             system_instruction = job_data.system_instruction or self._get_system_instruction()
             
-            # Get provider and model from job data (passed from frontend LLM selector)
-            provider = getattr(job_data, 'provider', None)
-            model = getattr(job_data, 'model', None)
+            # Get provider and model from job data
+            provider = job_data.provider
+            model = job_data.model
             
             result = await self.llm_service.query(
                 prompt=job_data.prompt,

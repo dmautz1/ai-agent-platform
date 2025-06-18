@@ -327,15 +327,12 @@ export class ApiHelper {
 
   async getJobs(): Promise<any[]> {
     const response = await this.makeAuthenticatedRequest('GET', '/jobs');
-    return response.data || response;
+    return response.jobs || [];
   }
 
   async getAvailableAgents(): Promise<any[]> {
     const response = await this.makeAuthenticatedRequest('GET', '/agents');
-    
-    // Convert agents object to array
-    const agentsData = response.agents || {};
-    return Object.values(agentsData);
+    return response.agents || [];
   }
 }
 

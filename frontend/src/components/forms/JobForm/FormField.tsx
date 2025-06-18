@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { ValidationErrorDisplay } from './ValidationErrorDisplay';
 import { inferFieldFromSchema } from './FormValidation';
-import type { FormFieldSchema } from '@/lib/models';
+import type { FormFieldSchema } from '@/lib/types';
 import type { 
   ValidationError
 } from './types';

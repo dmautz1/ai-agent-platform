@@ -19,7 +19,7 @@ from contextlib import asynccontextmanager
 from auth import get_current_user, get_optional_user
 from config.environment import get_settings, validate_required_settings, get_logging_config
 from logging_system import (
-    setup_logging_middleware, get_logger, get_performance_logger,
+    setup_logging_middleware, get_logger,
     get_security_logger, log_startup_info, log_shutdown_info
 )
 from agent import get_agent_registry, AgentError
@@ -28,7 +28,7 @@ from agent_framework import register_agent_endpoints, get_registered_agents
 from agents import discover_and_register_agents, instantiate_and_register_agents
 from job_pipeline import start_job_pipeline, stop_job_pipeline
 from database import get_database_operations, check_database_health
-from models import JobCreateRequest, JobResponse, JobListResponse, JobCreateResponse, JobDetailResponse
+from models import JobCreateRequest, JobResponse
 from static_files import setup_static_file_serving
 
 # Import all route modules
@@ -51,7 +51,6 @@ logging.config.dictConfig(logging_config)
 
 # Initialize structured loggers
 logger = get_logger(__name__)
-perf_logger = get_performance_logger()
 security_logger = get_security_logger()
 
 def get_cors_origins() -> List[str]:

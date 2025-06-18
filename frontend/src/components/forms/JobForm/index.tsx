@@ -3,7 +3,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useToast } from '@/components/ui/toast';
 import { api, handleApiError } from '@/lib/api';
-import type { AgentSchemaResponse, FormFieldSchema } from '@/lib/models';
+import type { AgentSchemaResponse, FormFieldSchema } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
@@ -94,10 +94,18 @@ export function JobForm({ agentId, onJobCreated }: DynamicJobFormProps) {
       const convertedSchemas: Record<string, FormFieldSchema> = {};
       const allRequiredFields: string[] = [];
       
+      // Fields handled by LLMSelector - exclude from dynamic form
+      const excludedFields = ['provider', 'model'];
+      
       // Process each model schema
       Object.entries(response.schemas).forEach(([_modelName, modelSchema]) => {
         if (modelSchema.properties) {
           Object.entries(modelSchema.properties).forEach(([fieldName, fieldSchema]) => {
+            // Skip fields handled by LLMSelector
+            if (excludedFields.includes(fieldName)) {
+              return;
+            }
+            
             // Convert AgentSchema property to FormFieldSchema
             const formFieldSchema: FormFieldSchema = {
               type: fieldSchema.type || 'string',
@@ -118,9 +126,10 @@ export function JobForm({ agentId, onJobCreated }: DynamicJobFormProps) {
             convertedSchemas[fieldName] = formFieldSchema;
           });
           
-          // Add required fields from this model
+          // Add required fields from this model (excluding LLMSelector fields)
           if (modelSchema.required) {
-            allRequiredFields.push(...modelSchema.required);
+            const filteredRequired = modelSchema.required.filter(field => !excludedFields.includes(field));
+            allRequiredFields.push(...filteredRequired);
           }
         }
       });
@@ -237,7 +246,7 @@ export function JobForm({ agentId, onJobCreated }: DynamicJobFormProps) {
 
       const response = await api.jobs.create(jobRequest);
       
-      if (response.success && response.job_id) {
+      if (response.job_id) {
         onJobCreated(response.job_id);
       } else {
         throw new Error('Invalid response from server');

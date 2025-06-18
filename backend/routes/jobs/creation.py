@@ -18,11 +18,10 @@ from job_pipeline import get_job_pipeline
 from agent_discovery import get_agent_discovery_system
 from agent_framework import get_registered_agents
 from agent import get_agent_registry, AgentError, AgentNotFoundError, AgentDisabledError, AgentNotLoadedError
-from models import JobCreateRequest, JobCreateResponse
-from logging_system import get_logger, get_performance_logger
+from models import JobCreateRequest
+from logging_system import get_logger
 
 logger = get_logger(__name__)
-perf_logger = get_performance_logger()
 
 router = APIRouter(tags=["job-creation"])
 
@@ -214,7 +213,7 @@ async def _validate_job_data_against_agent_schema(agent_identifier: str, job_dat
             "model_used": None
         }
 
-@router.post("/create", response_model=JobCreateResponse)
+@router.post("/create")
 async def create_job(
     request: JobCreateRequest,
     user: Dict[str, Any] = Depends(get_current_user)
@@ -224,134 +223,134 @@ async def create_job(
     
     Validates agent availability and job data before creation.
     """
-    with perf_logger.time_operation("create_job", user_id=user["id"], agent_identifier=request.agent_identifier):
-        logger.info(
-            "Job creation requested",
-            agent_identifier=request.agent_identifier,
-            user_id=user["id"],
-            data_size=len(str(request.data)),
-            priority=request.priority
+    logger.info(
+        "Job creation requested",
+        agent_identifier=request.agent_identifier,
+        user_id=user["id"],
+        data_size=len(str(request.data)),
+        priority=request.priority
+    )
+    
+    try:
+        # Validate agent exists and is enabled
+        agent_validation = validate_agent_exists_and_enabled(request.agent_identifier)
+        log_agent_access(request.agent_identifier, "job_creation_request", user["id"], True)
+        
+        # Validate job data against agent schema
+        schema_validation = await _validate_job_data_against_agent_schema(
+            request.agent_identifier, 
+            request.data
         )
         
-        try:
-            # Validate agent exists and is enabled
-            agent_validation = validate_agent_exists_and_enabled(request.agent_identifier)
-            log_agent_access(request.agent_identifier, "job_creation_request", user["id"], True)
-            
-            # Validate job data against agent schema
-            schema_validation = await _validate_job_data_against_agent_schema(
-                request.agent_identifier, 
-                request.data
-            )
-            
-            if not schema_validation["valid"]:
-                logger.warning(
-                    "Job data validation failed",
-                    agent_identifier=request.agent_identifier,
-                    user_id=user["id"],
-                    errors=schema_validation["errors"]
-                )
-                
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "message": "Job data validation failed",
-                        "error_code": "VALIDATION_ERROR",
-                        "validation_errors": schema_validation["errors"],
-                        "schema_info": schema_validation.get("schema_info"),
-                        "timestamp": datetime.now(timezone.utc).isoformat()
-                    }
-                )
-            
-            # Create job record
-            db_ops = get_database_operations()
-            job_data = {
-                "user_id": user["id"],
-                "agent_identifier": request.agent_identifier,
-                "data": request.data,
-                "title": request.title,
-                "priority": request.priority,
-                "tags": request.tags,
-                "status": "pending"
-            }
-            
-            job = await db_ops.create_job(job_data)
-            
-            if not job:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Failed to create job record"
-                )
-            
-            # Submit job to processing pipeline
-            pipeline = get_job_pipeline()
-            pipeline_submitted = await pipeline.submit_job(
-                job_id=job["id"],
-                user_id=user["id"],
-                agent_name=request.agent_identifier,
-                job_data=request.data,
-                priority=request.priority or 5,
-                tags=request.tags
-            )
-            
-            if not pipeline_submitted:
-                logger.warning(
-                    "Job created but failed to submit to pipeline",
-                    job_id=job["id"],
-                    agent_identifier=request.agent_identifier,
-                    user_id=user["id"]
-                )
-            
-            logger.info(
-                "Job created successfully",
-                job_id=job["id"],
-                agent_identifier=request.agent_identifier,
-                user_id=user["id"],
-                status="pending",
-                pipeline_submitted=pipeline_submitted
-            )
-            
-            return JobCreateResponse(
-                success=True,
-                message="Job created successfully",
-                job_id=job["id"]
-            )
-            
-        except (AgentNotFoundError, AgentDisabledError, AgentNotLoadedError) as e:
-            log_agent_access(request.agent_identifier, "job_creation_failed", user["id"], False)
+        if not schema_validation["valid"]:
             logger.warning(
-                "Agent validation failed for job creation",
+                "Job data validation failed",
                 agent_identifier=request.agent_identifier,
                 user_id=user["id"],
-                error=str(e)
+                errors=schema_validation["errors"]
             )
+            
             raise HTTPException(
-                status_code=e.status_code,
+                status_code=400,
                 detail={
-                    "message": str(e),
-                    "error_code": "AGENT_ERROR",
-                    "agent_identifier": request.agent_identifier,
+                    "message": "Job data validation failed",
+                    "error_code": "VALIDATION_ERROR",
+                    "validation_errors": schema_validation["errors"],
+                    "schema_info": schema_validation.get("schema_info"),
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
-        except HTTPException:
-            # Re-raise HTTP exceptions (like validation errors)
-            raise
-        except Exception as e:
-            logger.error(
-                "Job creation failed",
-                exception=e,
+        
+        # Create job record
+        db_ops = get_database_operations()
+        job_data = {
+            "user_id": user["id"],
+            "agent_identifier": request.agent_identifier,
+            "data": request.data,
+            "title": request.title,
+            "priority": request.priority,
+            "tags": request.tags,
+            "status": "pending"
+        }
+        
+        job = await db_ops.create_job(job_data)
+        
+        if not job:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to create job record"
+            )
+        
+        # Submit job to processing pipeline
+        pipeline = get_job_pipeline()
+        pipeline_submitted = await pipeline.submit_job(
+            job_id=job["id"],
+            user_id=user["id"],
+            agent_name=request.agent_identifier,
+            job_data=request.data,
+            priority=request.priority or 5,
+            tags=request.tags
+        )
+        
+        if not pipeline_submitted:
+            logger.warning(
+                "Job created but failed to submit to pipeline",
+                job_id=job["id"],
                 agent_identifier=request.agent_identifier,
                 user_id=user["id"]
             )
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "message": f"Failed to create job: {str(e)}",
-                    "error_code": "INTERNAL_ERROR",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            )
+        
+        logger.info(
+            "Job created successfully",
+            job_id=job["id"],
+            agent_identifier=request.agent_identifier,
+            user_id=user["id"],
+            status="pending",
+            pipeline_submitted=pipeline_submitted
+        )
+        
+        return {
+            "success": True,
+            "message": "Job created successfully",
+            "job_id": job["id"],
+            "job": job
+        }
+        
+    except (AgentNotFoundError, AgentDisabledError, AgentNotLoadedError) as e:
+        log_agent_access(request.agent_identifier, "job_creation_failed", user["id"], False)
+        logger.warning(
+            "Agent validation failed for job creation",
+            agent_identifier=request.agent_identifier,
+            user_id=user["id"],
+            error=str(e)
+        )
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={
+                "message": str(e),
+                "error_code": "AGENT_ERROR",
+                "agent_identifier": request.agent_identifier,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+    except HTTPException:
+        # Re-raise HTTP exceptions (like validation errors)
+        raise
+    except Exception as e:
+        logger.error(
+            "Job creation failed",
+            exception=e,
+            agent_identifier=request.agent_identifier,
+            user_id=user["id"]
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": f"Failed to create job: {str(e)}",
+                "error_code": "INTERNAL_ERROR",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
 
 @router.post("/validate")
 async def validate_job_data(
@@ -363,67 +362,66 @@ async def validate_job_data(
     
     Useful for form validation and pre-flight checks.
     """
-    with perf_logger.time_operation("validate_job_data", user_id=user["id"], agent_identifier=request.agent_identifier):
-        logger.info(
-            "Job data validation requested",
+    logger.info(
+        "Job data validation requested",
+        agent_identifier=request.agent_identifier,
+        user_id=user["id"]
+    )
+    
+    try:
+        # Validate agent exists and is enabled
+        agent_validation = validate_agent_exists_and_enabled(request.agent_identifier)
+        
+        # Validate job data against agent schema
+        schema_validation = await _validate_job_data_against_agent_schema(
+            request.agent_identifier, 
+            request.data
+        )
+        
+        return {
+            "success": True,
+            "message": "Validation completed",
+            "validation_result": {
+                "agent_valid": agent_validation["valid"],
+                "data_valid": schema_validation["valid"],
+                "errors": schema_validation.get("errors", []),
+                "warnings": schema_validation.get("warnings", []),
+                "schema_info": schema_validation.get("schema_info"),
+                "model_used": schema_validation.get("model_used")
+            },
+            "agent_metadata": agent_validation["metadata"],
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except (AgentNotFoundError, AgentDisabledError, AgentNotLoadedError) as e:
+        logger.warning(
+            "Agent validation failed",
+            agent_identifier=request.agent_identifier,
+            user_id=user["id"],
+            error=str(e)
+        )
+        return {
+            "success": False,
+            "message": str(e),
+            "validation_result": {
+                "agent_valid": False,
+                "data_valid": False,
+                "errors": [{"field": "agent", "message": str(e), "type": "agent_error"}]
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(
+            "Job data validation failed",
+            exception=e,
             agent_identifier=request.agent_identifier,
             user_id=user["id"]
         )
-        
-        try:
-            # Validate agent exists and is enabled
-            agent_validation = validate_agent_exists_and_enabled(request.agent_identifier)
-            
-            # Validate job data against agent schema
-            schema_validation = await _validate_job_data_against_agent_schema(
-                request.agent_identifier, 
-                request.data
-            )
-            
-            return {
-                "success": True,
-                "message": "Validation completed",
-                "validation_result": {
-                    "agent_valid": agent_validation["valid"],
-                    "data_valid": schema_validation["valid"],
-                    "errors": schema_validation.get("errors", []),
-                    "warnings": schema_validation.get("warnings", []),
-                    "schema_info": schema_validation.get("schema_info"),
-                    "model_used": schema_validation.get("model_used")
-                },
-                "agent_metadata": agent_validation["metadata"],
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": f"Validation failed: {str(e)}",
+                "error_code": "VALIDATION_ERROR",
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
-            
-        except (AgentNotFoundError, AgentDisabledError, AgentNotLoadedError) as e:
-            logger.warning(
-                "Agent validation failed",
-                agent_identifier=request.agent_identifier,
-                user_id=user["id"],
-                error=str(e)
-            )
-            return {
-                "success": False,
-                "message": str(e),
-                "validation_result": {
-                    "agent_valid": False,
-                    "data_valid": False,
-                    "errors": [{"field": "agent", "message": str(e), "type": "agent_error"}]
-                },
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
-        except Exception as e:
-            logger.error(
-                "Job data validation failed",
-                exception=e,
-                agent_identifier=request.agent_identifier,
-                user_id=user["id"]
-            )
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "message": f"Validation failed: {str(e)}",
-                    "error_code": "VALIDATION_ERROR",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            ) 
+        ) 

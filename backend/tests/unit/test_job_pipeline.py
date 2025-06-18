@@ -37,16 +37,24 @@ def mock_agent():
     """Mock agent instance"""
     agent = Mock()
     agent.get_models.return_value = {'TestJobData': Mock}
+    
     # Mock the internal method that job pipeline actually calls
     agent._execute_job_logic = AsyncMock(return_value=AgentExecutionResult(
         success=True,
         result='{"processed": true}'
     ))
-    # Keep the execute_job mock for compatibility
-    agent.execute_job = AsyncMock(return_value=AgentExecutionResult(
-        success=True,
-        result='{"processed": true}'
-    ))
+    
+    # Mock execute_job to call _execute_job_logic like the real BaseAgent does
+    async def mock_execute_job(job_id, job_data, user_id=None):
+        # Simulate what BaseAgent.execute_job does
+        result = await agent._execute_job_logic(job_data)
+        # Add execution time if not set
+        if result.execution_time is None:
+            result.execution_time = 1.0
+        return result
+    
+    agent.execute_job = mock_execute_job
+    
     # Mock agent state tracking
     agent.execution_count = 0
     agent.last_execution_time = None

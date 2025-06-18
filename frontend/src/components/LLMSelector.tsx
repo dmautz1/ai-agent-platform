@@ -82,16 +82,17 @@ export function LLMSelector({
         for (const providerName of providerNames) {
           try {
             const response = await apiClient.get(`/${providerName}/models`);
-            if (response.data.status === 'success') {
+            if (response.data.status === 'success' && response.data.models) {
               // Map endpoint names to internal provider names
               const internalName = providerName === 'google-ai' ? 'google' : providerName;
+              const providerData = response.data;
               
               providers[internalName] = {
                 provider: internalName,
                 status: 'available',
-                service_name: response.data.service || getServiceDisplayName(providerName),
-                default_model: response.data.default_model || (response.data.models && response.data.models[0]),
-                available_models: response.data.models || []
+                service_name: getServiceDisplayName(providerName),
+                default_model: providerData.models && providerData.models[0] ? providerData.models[0] : '',
+                available_models: providerData.models || []
               };
               availableProviders.push(internalName);
             }

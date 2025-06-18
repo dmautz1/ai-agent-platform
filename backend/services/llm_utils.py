@@ -7,7 +7,6 @@ Common utilities and helpers for LLM services to eliminate code duplication.
 import json
 import asyncio
 import functools
-import time
 from datetime import datetime, timedelta
 from typing import Dict, Any, Callable, Union, List, Optional
 from logging_system import get_logger
@@ -343,87 +342,30 @@ def get_model_info(model_name: str, available_models: List[str]) -> Dict[str, An
 # Connection health monitoring utilities
 
 class ConnectionHealthTracker:
-    """Track connection health metrics for LLM services"""
+    """Track basic connection health for LLM services"""
     
-    def __init__(self, service_name: str, max_history: int = 100):
+    def __init__(self, service_name: str):
         self.service_name = service_name
-        self.max_history = max_history
-        self.request_history: List[Dict[str, Any]] = []
-        self.total_requests = 0
         self.total_errors = 0
-        self.total_response_time = 0.0
-        self.last_success_time: Optional[datetime] = None
-        self.last_error_time: Optional[datetime] = None
         self.consecutive_errors = 0
+        self.last_error_time: Optional[datetime] = None
         
-    def record_request(self, success: bool, response_time: float, error_type: Optional[str] = None):
-        """Record a request and its outcome"""
-        now = datetime.now()
-        
-        # Update counters
-        self.total_requests += 1
-        self.total_response_time += response_time
-        
+    def record_request(self, success: bool, error_type: Optional[str] = None):
+        """Record a request outcome"""
         if success:
-            self.last_success_time = now
             self.consecutive_errors = 0
         else:
             self.total_errors += 1
-            self.last_error_time = now
             self.consecutive_errors += 1
-        
-        # Add to history (keep only recent entries)
-        request_record = {
-            "timestamp": now,
-            "success": success,
-            "response_time": response_time,
-            "error_type": error_type
-        }
-        
-        self.request_history.append(request_record)
-        if len(self.request_history) > self.max_history:
-            self.request_history.pop(0)
+            self.last_error_time = datetime.now()
     
     def get_health_status(self) -> Dict[str, Any]:
-        """Get current health status"""
-        now = datetime.now()
-        
-        # Calculate metrics
-        error_rate = (self.total_errors / self.total_requests * 100) if self.total_requests > 0 else 0
-        avg_response_time = (self.total_response_time / self.total_requests) if self.total_requests > 0 else 0
-        
-        # Recent metrics (last 10 requests)
-        recent_requests = self.request_history[-10:] if len(self.request_history) >= 10 else self.request_history
-        recent_error_rate = 0
-        recent_avg_response_time = 0
-        
-        if recent_requests:
-            recent_errors = sum(1 for r in recent_requests if not r["success"])
-            recent_error_rate = (recent_errors / len(recent_requests) * 100)
-            recent_avg_response_time = sum(r["response_time"] for r in recent_requests) / len(recent_requests)
-        
-        # Determine health status
-        health_status = "healthy"
-        if self.consecutive_errors >= 3:
-            health_status = "unhealthy"
-        elif recent_error_rate > 50:
-            health_status = "degraded"
-        elif recent_avg_response_time > 10:  # 10 seconds threshold
-            health_status = "slow"
-        
+        """Get basic health status"""
         return {
             "service_name": self.service_name,
-            "health_status": health_status,
-            "total_requests": self.total_requests,
             "total_errors": self.total_errors,
-            "error_rate_percent": round(error_rate, 2),
-            "average_response_time_seconds": round(avg_response_time, 2),
-            "recent_error_rate_percent": round(recent_error_rate, 2),
-            "recent_average_response_time_seconds": round(recent_avg_response_time, 2),
             "consecutive_errors": self.consecutive_errors,
-            "last_success_time": self.last_success_time.isoformat() if self.last_success_time else None,
-            "last_error_time": self.last_error_time.isoformat() if self.last_error_time else None,
-            "uptime_minutes": (now - self.request_history[0]["timestamp"]).total_seconds() / 60 if self.request_history else 0
+            "last_error_time": self.last_error_time.isoformat() if self.last_error_time else None
         }
 
 # Global health trackers for each service
@@ -440,25 +382,16 @@ def monitor_connection_health(service_name: str):
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
-            start_time = time.time()
             tracker = get_health_tracker(service_name)
             
             try:
                 result = await func(*args, **kwargs)
-                
-                # Record successful request
-                response_time = time.time() - start_time
-                tracker.record_request(success=True, response_time=response_time)
-                
+                tracker.record_request(success=True)
                 return result
                 
             except Exception as e:
-                # Record failed request
-                response_time = time.time() - start_time
                 error_type = type(e).__name__
-                tracker.record_request(success=False, response_time=response_time, error_type=error_type)
-                
-                # Re-raise the exception
+                tracker.record_request(success=False, error_type=error_type)
                 raise
                 
         return wrapper

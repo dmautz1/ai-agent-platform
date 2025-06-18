@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { type Job } from '@/lib/api';
-import type { AgentInfo } from '@/lib/models';
+import type { AgentInfo } from '@/lib/types';
 import { useJobPolling } from '@/lib/polling';
 import { useToast } from '@/components/ui/toast';
 import { useBreakpoint, responsivePadding, responsiveSpacing, touchButtonSizes } from '@/lib/responsive';
@@ -242,7 +242,7 @@ export const DashboardPage: React.FC = () => {
             <div className="flex items-center gap-2 px-2 py-1 rounded-lg border sm:px-3 sm:py-2">
               <User className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium max-w-[100px] truncate sm:max-w-none">
-                {user?.name || user?.email}
+                {user?.email}
               </span>
               <Button 
                 variant="ghost" 

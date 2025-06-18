@@ -1,26 +1,45 @@
 import axios, { type AxiosInstance, type AxiosResponse, AxiosError } from 'axios';
 import type {
   // Base API types
-  ApiResponse,
+  BaseApiResponse,
   ApiError,
   
-  // Job types
+  // Job response types
+  JobListResponse,
+  JobDetailResponse,
+  CreateJobResponse,
+  JobStatusResponse,
+  JobRetryResponse,
+  JobRerunResponse,
+  JobLogsResponse,
+  BatchStatusResponse,
+  JobsMinimalResponse,
+  
+  // Agent response types
+  AgentListResponse,
+  AgentDetailResponse,
+  
+  // System response types
+  HealthResponse,
+  SystemStatsResponse,
+  
+  // Auth response types
+  LoginResponse,
+  AuthUserResponse,
+  AuthTokenResponse,
+  
+  // Core types
   Job,
   JobMinimal,
   JobStatus,
   CreateJobRequest,
-  CreateJobResponse,
-  JobListResponse,
-  JobDetailResponse,
   JobsQuery,
-  JobsListResponse,
   BatchStatusRequest,
   JobStatusUpdate,
   
   // User & Auth types
   User,
   LoginRequest,
-  LoginResponse,
   AuthTokens,
   
   // Agent types
@@ -32,7 +51,7 @@ import type {
   SystemStats,
   
   // Utility types
-} from './models';
+} from './types';
 
 // Create axios instance with base configuration
 const apiClient: AxiosInstance = axios.create({
@@ -152,7 +171,7 @@ export const api = {
     },
 
     // Get paginated jobs list
-    getList: async (query?: JobsQuery): Promise<JobsListResponse> => {
+    getList: async (query?: JobsQuery): Promise<{ jobs: Job[]; total_count: number }> => {
       const params = query ? new URLSearchParams(
         Object.entries(query).reduce((acc, [key, value]) => {
           if (value !== undefined && value !== null) {
@@ -167,19 +186,9 @@ export const api = {
       ) : undefined;
       
       const response = await apiClient.get<JobListResponse>('/jobs/list', { params });
-      
-      // Convert backend JobListResponse to frontend JobsListResponse format
-      return {
-        jobs: response.data.jobs || [],
-        pagination: {
-          total: response.data.total_count || 0,
-          page: 1, // Default values since backend doesn't return pagination info yet
-          per_page: response.data.total_count || 50,
-          total_pages: 1,
-          has_next: false,
-          has_prev: false
-        },
-        filters_applied: query || {}
+      return { 
+        jobs: response.data.jobs || [], 
+        total_count: response.data.total_count || 0 
       };
     },
 
@@ -193,21 +202,21 @@ export const api = {
     },
 
     // Create new job
-    create: async (jobData: CreateJobRequest): Promise<CreateJobResponse> => {
+    create: async (jobData: CreateJobRequest): Promise<{ job_id: string }> => {
       const response = await apiClient.post<CreateJobResponse>('/jobs/create', jobData);
       if (!response.data.job_id) {
         throw new Error('Failed to create job');
       }
-      return response.data;
+      return { job_id: response.data.job_id };
     },
 
     // Update job
     update: async (id: string, updates: Partial<Job>): Promise<Job> => {
-      const response = await apiClient.patch<ApiResponse<Job>>(`/jobs/${id}`, updates);
-      if (!response.data.data) {
+      const response = await apiClient.patch<JobDetailResponse>(`/jobs/${id}`, updates);
+      if (!response.data.job) {
         throw new Error('Failed to update job');
       }
-      return response.data.data;
+      return response.data.job;
     },
 
     // Delete job
@@ -217,154 +226,103 @@ export const api = {
 
     // Cancel job
     cancel: async (id: string): Promise<Job> => {
-      const response = await apiClient.post<ApiResponse<Job>>(`/jobs/${id}/cancel`);
-      if (!response.data.data) {
+      const response = await apiClient.post<JobDetailResponse>(`/jobs/${id}/cancel`);
+      if (!response.data.job) {
         throw new Error('Failed to cancel job');
       }
-      return response.data.data;
+      return response.data.job;
     },
 
     // Get job status
     getStatus: async (id: string): Promise<JobStatus> => {
-      const response = await apiClient.get<ApiResponse<{ status: JobStatus }>>(`/jobs/${id}/status`);
-      return response.data.data?.status || 'pending';
+      const response = await apiClient.get<JobStatusResponse>(`/jobs/${id}/status`);
+      return response.data.status || 'pending';
     },
 
     // Get multiple job statuses (batch operation)
     getBatchStatus: async (ids: string[]): Promise<Record<string, JobStatusUpdate>> => {
       const request: BatchStatusRequest = { job_ids: ids };
-      const response = await apiClient.post<ApiResponse<Record<string, JobStatusUpdate>>>('/jobs/batch/status', request);
-      return response.data.data || {};
+      const response = await apiClient.post<BatchStatusResponse>('/jobs/batch/status', request);
+      return response.data.statuses || {};
     },
 
     // Get jobs with minimal data for polling (lighter weight)
     getAllMinimal: async (): Promise<JobMinimal[]> => {
-      const response = await apiClient.get<ApiResponse<JobMinimal[]>>('/jobs/minimal');
-      return response.data.data || [];
+      const response = await apiClient.get<JobsMinimalResponse>('/jobs/minimal');
+      return response.data.jobs || [];
     },
 
     // Retry failed job
-    retry: async (id: string): Promise<Job> => {
-      const response = await apiClient.post<ApiResponse<Job>>(`/jobs/${id}/retry`);
-      if (!response.data.data) {
+    retry: async (id: string): Promise<{ job_id: string; status: string }> => {
+      const response = await apiClient.post<JobRetryResponse>(`/jobs/${id}/retry`);
+      if (!response.data.job_id) {
         throw new Error('Failed to retry job');
       }
-      return response.data.data;
+      return {
+        job_id: response.data.job_id,
+        status: response.data.new_status
+      };
     },
 
     // Rerun any job (creates new job with same config)
-    rerun: async (id: string): Promise<{ original_job_id: string; new_job_id: string; original_job_status?: string; data?: Job }> => {
-      const response = await apiClient.post<{
-        success: boolean;
-        message?: string;
-        original_job_id: string;
-        rerun_job?: {
-          id: string;
-          status: string;
-          created_at: string;
-          agent_identifier: string;
-        };
-        // Fallback for different endpoint format
-        new_job_id?: string;
-        new_job?: any;
-      }>(`/jobs/${id}/rerun`);
+    rerun: async (id: string): Promise<{ original_job_id: string; new_job_id: string; new_job: Job }> => {
+      const response = await apiClient.post<JobRerunResponse>(`/jobs/${id}/rerun`);
       
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Failed to rerun job');
-      }
-      
-      // Handle both response formats
-      const new_job_id = response.data.rerun_job?.id || response.data.new_job_id || response.data.new_job?.id;
-      
-      if (!new_job_id) {
-        throw new Error('Invalid rerun response: no new job ID found');
+      if (!response.data.new_job_id) {
+        throw new Error('Failed to rerun job');
       }
       
       return {
         original_job_id: response.data.original_job_id,
-        new_job_id,
-        original_job_status: undefined, // Not provided by the current endpoint
-        data: response.data.rerun_job as Job || response.data.new_job as Job
+        new_job_id: response.data.new_job_id,
+        new_job: response.data.new_job
       };
     },
 
     // Get job logs
     getLogs: async (id: string): Promise<string[]> => {
-      const response = await apiClient.get<ApiResponse<string[]>>(`/jobs/${id}/logs`);
-      return response.data.data || [];
+      const response = await apiClient.get<JobLogsResponse>(`/jobs/${id}/logs`);
+      return response.data.logs || [];
     },
   },
 
   // Agent management
   agents: {
-    // NEW: Get all agents from discovery system
+    // Get all agents from discovery system
     getAll: async (): Promise<AgentInfo[]> => {
-      const response = await apiClient.get<{ agents?: any[] }>('/agents');
-      const agents = response.data?.agents || [];
-      
-      // Convert the backend agent data to frontend AgentInfo format
-      return agents.map((agent: any): AgentInfo => ({
-        identifier: agent.identifier,
-        name: agent.name,
-        description: agent.description,
-        class_name: agent.class_name,
-        lifecycle_state: agent.lifecycle_state,
-        supported_environments: agent.supported_environments || [],
-        version: agent.version || '1.0.0',
-        enabled: agent.lifecycle_state === 'enabled' && agent.is_loaded === true,
-        has_error: agent.status === 'error' || Boolean(agent.error_message) || Boolean(agent.load_error),
-        error_message: agent.error_message || agent.load_error || null,
-        created_at: agent.created_at,
-        last_updated: agent.last_updated,
-        runtime_info: agent.runtime_info,
-        instance_available: agent.is_loaded
-      }));
+      const response = await apiClient.get<AgentListResponse>('/agents');
+      return response.data.agents || [];
     },
 
-    // NEW: Get detailed agent information by identifier
+    // Get detailed agent information by identifier
     getById: async (agentId: string): Promise<AgentInfo> => {
-      const response = await apiClient.get<any>(`/agents/${agentId}`);
-      const agent = response.data;
-      
-      if (!agent) {
+      const response = await apiClient.get<AgentDetailResponse>(`/agents/${agentId}`);
+      if (!response.data) {
         throw new Error(`Agent ${agentId} not found`);
       }
-      
-      return {
-        identifier: agent.identifier,
-        name: agent.name,
-        description: agent.description,
-        class_name: agent.class_name,
-        lifecycle_state: agent.lifecycle_state,
-        supported_environments: agent.supported_environments || [],
-        version: agent.version || '1.0.0',
-        enabled: agent.lifecycle_state === 'enabled' && agent.is_loaded === true,
-        has_error: agent.status === 'error' || Boolean(agent.error_message) || Boolean(agent.load_error),
-        error_message: agent.error_message || agent.load_error || null,
-        created_at: agent.created_at,
-        last_updated: agent.last_updated,
-        runtime_info: agent.runtime_info,
-        instance_available: agent.is_loaded
-      };
+      return response.data;
     },
 
-    // NEW: Get agent schema for dynamic form generation
+    // Get agent schema for dynamic form generation
     getSchema: async (agentId: string): Promise<AgentSchemaResponse> => {
       const response = await apiClient.get<AgentSchemaResponse>(`/agents/${agentId}/schema`);
+      if (!response.data) {
+        throw new Error(`Schema not found for agent ${agentId}`);
+      }
       return response.data;
     },
 
     // Get agent configuration
     getConfig: async (agentId: string): Promise<Record<string, unknown>> => {
-      const response = await apiClient.get<ApiResponse<Record<string, unknown>>>(`/agents/${agentId}/config`);
-      return response.data.data || {};
+      const response = await apiClient.get<BaseApiResponse & { config: Record<string, unknown> }>(`/agents/${agentId}/config`);
+      return response.data.config || {};
     },
 
     // Test agent connectivity
     test: async (agentId: string): Promise<boolean> => {
       try {
-        const response = await apiClient.post<ApiResponse<{ success: boolean }>>(`/agents/${agentId}/test`);
-        return response.data.data?.success || false;
+        const response = await apiClient.post<BaseApiResponse & { test_result: boolean }>(`/agents/${agentId}/test`);
+        return response.data.test_result || false;
       } catch {
         return false;
       }
@@ -375,11 +333,11 @@ export const api = {
   auth: {
     // Login
     login: async (credentials: LoginRequest): Promise<LoginResponse> => {
-      const response = await apiClient.post<ApiResponse<LoginResponse>>('/auth/login', credentials);
-      if (!response.data.data) {
+      const response = await apiClient.post<LoginResponse>('/auth/login', credentials);
+      if (!response.data.user) {
         throw new Error('Login failed');
       }
-      return response.data.data;
+      return response.data;
     },
 
     // Logout
@@ -390,44 +348,42 @@ export const api = {
 
     // Get current user
     getCurrentUser: async (): Promise<User> => {
-      const response = await apiClient.get<ApiResponse<User>>('/auth/me');
-      if (!response.data.data) {
+      const response = await apiClient.get<AuthUserResponse>('/auth/me');
+      if (!response.data.user) {
         throw new Error('Failed to get user data');
       }
-      return response.data.data;
+      return response.data.user;
     },
 
     // Refresh auth token
     refreshToken: async (refreshToken: string): Promise<AuthTokens> => {
-      const response = await apiClient.post<ApiResponse<AuthTokens>>('/auth/refresh', { refresh_token: refreshToken });
-      if (!response.data.data) {
+      const response = await apiClient.post<AuthTokenResponse>('/auth/refresh', { refresh_token: refreshToken });
+      if (!response.data.access_token) {
         throw new Error('Failed to refresh token');
       }
-      return response.data.data;
+      return {
+        access_token: response.data.access_token,
+        refresh_token: response.data.refresh_token,
+        token_type: response.data.token_type,
+        expires_in: response.data.expires_in
+      };
     },
   },
 
   // Health check and system stats
   health: {
     check: async (): Promise<HealthCheck> => {
-      const response = await apiClient.get<ApiResponse<HealthCheck>>('/health');
-      return response.data.data || { 
-        status: 'unhealthy' as const, 
+      const response = await apiClient.get<HealthResponse>('/health');
+      return response.data || { 
+        status: 'unhealthy', 
         timestamp: new Date().toISOString(),
-        version: 'unknown',
-        environment: 'unknown',
-        components: {
-          database: { status: 'unhealthy' as const, last_check: new Date().toISOString() },
-          agents: { status: 'unhealthy' as const, last_check: new Date().toISOString() },
-          storage: { status: 'unhealthy' as const, last_check: new Date().toISOString() },
-          external_apis: { status: 'unhealthy' as const, last_check: new Date().toISOString() },
-        }
+        version: 'unknown'
       };
     },
 
     getStats: async (): Promise<SystemStats> => {
-      const response = await apiClient.get<ApiResponse<SystemStats>>('/health/stats');
-      return response.data.data || {
+      const response = await apiClient.get<SystemStatsResponse>('/stats');
+      return response.data.statistics || {
         total_jobs: 0,
         jobs_by_status: { pending: 0, running: 0, completed: 0, failed: 0, cancelled: 0 },
         jobs_by_agent_identifier: {},
@@ -497,13 +453,11 @@ export type {
   Job,
   JobMinimal,
   JobStatus,
-  JobPriority,
   CreateJobRequest,
-  CreateJobResponse,
   User,
   ApiError,
   HealthCheck,
   SystemStats,
-} from './models';
+} from './types';
 
 export default apiClient; 

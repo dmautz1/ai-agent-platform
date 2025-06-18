@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AgentInfo } from '@/lib/models';
+import type { AgentInfo } from '@/lib/types';
 import { useBreakpoint } from '@/lib/responsive';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -27,8 +27,8 @@ interface AgentCardProps {
 }
 
 export const AgentCard: React.FC<AgentCardProps> = ({
-  agent,
-  selectionMode = false,
+  agent, 
+  selectionMode = false, 
   showExtendedDetails = false,
   compact = false,
   className,
@@ -38,38 +38,48 @@ export const AgentCard: React.FC<AgentCardProps> = ({
 }) => {
   const { isMobile } = useBreakpoint();
 
+  const isAgentAvailable = (agent: AgentInfo): boolean => {
+    return agent.lifecycle_state === 'enabled' && agent.status === 'available' && !agent.has_error;
+  };
+
+  const getStatusInfo = (agent: AgentInfo) => {
+    if (!isAgentAvailable(agent)) {
+      if (agent.has_error) {
+        return {
+          icon: <XCircle className="h-4 w-4" />,
+          badge: { variant: 'destructive' as const, text: 'Error' },
+          className: 'text-red-500'
+        };
+      }
+      if (agent.lifecycle_state !== 'enabled') {
+        return {
+          icon: <AlertCircle className="h-4 w-4" />,
+          badge: { variant: 'secondary' as const, text: 'Disabled' },
+          className: 'text-yellow-500'
+        };
+      }
+      if (agent.status !== 'available') {
+        return {
+          icon: <Clock className="h-4 w-4" />,
+          badge: { variant: 'secondary' as const, text: agent.status === 'loading' ? 'Loading' : 'Unavailable' },
+          className: 'text-blue-500'
+        };
+      }
+    }
+
+    return {
+      icon: <CheckCircle className="h-4 w-4" />,
+      badge: { variant: 'default' as const, text: 'Available' },
+      className: 'text-green-500'
+    };
+  };
+
   const getStatusBadge = () => {
-    if (agent.has_error) {
-      return (
-        <Badge variant="destructive" className="flex items-center gap-1 text-xs">
-          <XCircle className="h-3 w-3" />
-          Error
-        </Badge>
-      );
-    }
-
-    if (!agent.enabled) {
-      return (
-        <Badge variant="secondary" className="flex items-center gap-1 text-xs">
-          <Clock className="h-3 w-3" />
-          Disabled
-        </Badge>
-      );
-    }
-
-    if (agent.lifecycle_state === 'enabled') {
-      return (
-        <Badge variant="default" className="flex items-center gap-1 bg-green-500 hover:bg-green-600 text-xs">
-          <CheckCircle className="h-3 w-3" />
-          Ready
-        </Badge>
-      );
-    }
-
+    const statusInfo = getStatusInfo(agent);
     return (
-      <Badge variant="outline" className="flex items-center gap-1 text-xs">
-        <AlertCircle className="h-3 w-3" />
-        {agent.lifecycle_state}
+      <Badge variant={statusInfo.badge.variant} className={cn("flex items-center gap-1 text-xs", statusInfo.className)}>
+        {statusInfo.icon}
+        {statusInfo.badge.text}
       </Badge>
     );
   };
@@ -87,7 +97,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   };
 
   const getEnvironmentsBadges = () => {
-    if (!showExtendedDetails || agent.supported_environments.length === 0) {
+    if (!showExtendedDetails || !agent.supported_environments || agent.supported_environments.length === 0) {
       return null;
     }
 
@@ -120,13 +130,13 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   };
 
   const handleCardClick = () => {
-    if (selectionMode && onSelect && agent.enabled && !agent.has_error) {
+    if (selectionMode && onSelect && isAgentAvailable(agent)) {
       onSelect(agent);
     }
   };
 
   const handleConfigureClick = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent card click when clicking configure button
+    e.stopPropagation();
     if (onConfigure) {
       onConfigure(agent);
     }
@@ -135,13 +145,10 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   return (
     <Card 
       className={cn(
-        "h-full transition-all duration-200",
-        selectionMode 
-          ? "cursor-pointer hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"
-          : "hover:shadow-sm",
-        agent.has_error && "border-destructive/50",
-        !agent.enabled && "opacity-75",
-        compact && "text-sm",
+        "touch-manipulation transition-all duration-200 cursor-pointer",
+        selectionMode && "hover:ring-2 hover:ring-primary/20",
+        !isAgentAvailable(agent) && "opacity-75",
+        agent.has_error && "border-red-200 hover:border-red-300",
         className
       )}
       onClick={handleCardClick}
@@ -177,7 +184,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
           {agent.description}
         </p>
         
-        {showExtendedDetails && agent.supported_environments.length > 0 && (
+        {showExtendedDetails && agent.supported_environments && agent.supported_environments.length > 0 && (
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-1">Environments:</p>
             {getEnvironmentsBadges()}
@@ -191,7 +198,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
           </div>
         )}
 
-        {showExtendedDetails && (
+        {showExtendedDetails && agent.created_at && (
           <div className="space-y-1">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
@@ -206,20 +213,20 @@ export const AgentCard: React.FC<AgentCardProps> = ({
         <div className="pt-2 border-t border-border/50">
           <div className="flex justify-between items-center text-xs text-muted-foreground">
             <span>Updated:</span>
-            <span>{formatDate(agent.last_updated)}</span>
+            <span>{agent.last_updated ? formatDate(agent.last_updated) : 'Unknown'}</span>
           </div>
         </div>
 
         {(selectionMode || showConfigButton) && (
           <div className={cn(
-            "flex gap-2",
+            "flex gap-2 mt-4",
             selectionMode && showConfigButton ? "flex-row" : "flex-col"
           )}>
             {selectionMode && (
               <Button 
                 size="sm" 
                 className="flex-1"
-                disabled={!agent.enabled || agent.has_error}
+                disabled={!isAgentAvailable(agent)}
                 onClick={() => onSelect?.(agent)}
               >
                 Select Agent
@@ -232,7 +239,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
                 variant="outline"
                 className={cn("flex items-center gap-1", selectionMode ? "flex-shrink-0" : "w-full")}
                 onClick={handleConfigureClick}
-                disabled={!agent.enabled}
+                disabled={!isAgentAvailable(agent)}
               >
                 <Settings className="h-3 w-3" />
                 {selectionMode ? "" : "Configure"}

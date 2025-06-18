@@ -15,10 +15,9 @@ from fastapi import HTTPException
 from config.agent import AgentConfig, PerformanceMode, AgentProfile
 from models import JobStatus, JobDataBase
 from database import DatabaseClient
-from logging_system import get_logger, get_performance_logger
+from logging_system import get_logger
 
 logger = get_logger(__name__)
-perf_logger = get_performance_logger()
 
 class AgentError(HTTPException):
     """Base exception for agent-related errors"""
@@ -244,8 +243,7 @@ class BaseAgent(ABC):
                 await self._update_job_status(job_id, JobStatus.running)
             
             # Execute job with performance monitoring
-            with perf_logger.time_operation(f"agent_execution_{self.name}", job_id=job_id):
-                result = await self._execute_job_logic(job_data)
+            result = await self._execute_job_logic(job_data)
             
             # Calculate execution time
             execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()

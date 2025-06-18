@@ -1,3 +1,4 @@
+import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
@@ -5,6 +6,9 @@ import { MemoryRouter } from 'react-router-dom';
 import { AgentDirectoryPage } from '../../pages/AgentDirectory';
 import { AuthProvider } from '../../contexts/AuthContext';
 import { ToastProvider } from '../../components/ui/toast';
+
+// Extend Vitest matchers
+import '@testing-library/jest-dom/vitest';
 
 // Mock the API module
 vi.mock('../../lib/api', () => ({
@@ -121,7 +125,7 @@ describe('AgentDirectoryPage', () => {
     renderWithProviders();
 
     // Header elements should be immediately visible (not lazy loaded)
-    expect(screen.getByText('Test User')).toBeInTheDocument();
+    expect(screen.getByText('test@example.com')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign Out' })).toBeInTheDocument();
   });
 

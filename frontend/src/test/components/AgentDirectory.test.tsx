@@ -1,9 +1,10 @@
+import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { AgentDirectory } from '@/components/AgentDirectory';
 import { api } from '@/lib/api';
-import type { AgentInfo } from '@/lib/models';
+import type { AgentInfo } from '@/lib/types';
 
 // Mock dependencies
 vi.mock('@/lib/api', () => ({

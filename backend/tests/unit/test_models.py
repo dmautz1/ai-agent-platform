@@ -8,10 +8,9 @@ import pytest
 from datetime import datetime
 from pydantic import ValidationError
 from models import (
-    JobStatus, BaseResponse, ErrorResponse, UserInfo, JobDataBase,
-    JobCreateRequest, JobResponse, JobListResponse, JobCreateResponse,
-    JobDetailResponse, JobStatusUpdate, JobStats, JobStatsResponse,
-    AuthResponse, HealthResponse
+    JobStatus, JobResponse, UserInfo, JobDataBase,
+    JobCreateRequest, JobStatusUpdate, JobStats,
+    HealthResponse
 )
 
 
@@ -30,35 +29,45 @@ class TestBaseModels:
     """Test base model classes"""
 
     def test_base_response_default(self):
-        """Test BaseResponse with default values"""
-        response = BaseResponse()
-        assert response.success is True
-        assert response.message == "Operation successful"
-        assert isinstance(response.timestamp, datetime)
+        """Test JobResponse with valid required fields"""
+        response = JobResponse(
+            id="test-id",
+            status=JobStatus.completed,
+            agent_identifier="test_agent",
+            data={"test": "data"},
+            created_at=datetime.now(),
+            updated_at=datetime.now()
+        )
+        # Test the fields that actually exist in JobResponse
+        assert response.id == "test-id"
+        assert response.status == JobStatus.completed
+        assert response.agent_identifier == "test_agent"
+        assert response.data == {"test": "data"}
+        assert isinstance(response.created_at, datetime)
+        assert isinstance(response.updated_at, datetime)
 
     def test_base_response_custom(self):
-        """Test BaseResponse with custom values"""
+        """Test JobResponse with custom values"""
         custom_time = datetime.now()
-        response = BaseResponse(
-            success=False,
-            message="Custom message",
-            timestamp=custom_time
+        response = JobResponse(
+            id="test-id",
+            status=JobStatus.failed,
+            agent_identifier="test_agent",
+            data={"test": "data"},
+            created_at=custom_time,
+            updated_at=custom_time,
+            title="Custom Job",
+            error_message="Custom error message"
         )
-        assert response.success is False
-        assert response.message == "Custom message"
-        assert response.timestamp == custom_time
-
-    def test_error_response(self):
-        """Test ErrorResponse model"""
-        error = ErrorResponse(
-            message="Error occurred",
-            error_code="ERR001",
-            details={"field": "value"}
-        )
-        assert error.success is False
-        assert error.message == "Error occurred"
-        assert error.error_code == "ERR001"
-        assert error.details == {"field": "value"}
+        # Test the fields that actually exist in JobResponse
+        assert response.id == "test-id"
+        assert response.status == JobStatus.failed
+        assert response.agent_identifier == "test_agent"
+        assert response.data == {"test": "data"}
+        assert response.title == "Custom Job"
+        assert response.error_message == "Custom error message"
+        assert response.created_at == custom_time
+        assert response.updated_at == custom_time
 
 
 class TestUserModels:
@@ -127,6 +136,7 @@ class TestJobRequestResponseModels:
         """Test JobCreateRequest with valid data"""
         request = JobCreateRequest(
             agent_identifier="simple_prompt",
+            title="Test Job",
             data={
                 "prompt": "Hello world",
                 "max_tokens": 100
@@ -135,6 +145,7 @@ class TestJobRequestResponseModels:
             tags=["test", "prompt"]
         )
         assert request.agent_identifier == "simple_prompt"
+        assert request.title == "Test Job"
         assert request.data == {"prompt": "Hello world", "max_tokens": 100}
         assert request.priority == 5
         assert request.tags == ["test", "prompt"]
@@ -144,6 +155,7 @@ class TestJobRequestResponseModels:
         with pytest.raises(ValidationError) as exc_info:
             JobCreateRequest(
                 agent_identifier="simple_prompt",
+                title="Test Job",
                 data={"prompt": "test"},
                 priority=15  # Priority > 10
             )
@@ -153,9 +165,11 @@ class TestJobRequestResponseModels:
         """Test JobCreateRequest with minimal data"""
         request = JobCreateRequest(
             agent_identifier="simple_prompt",
+            title="Test Job",
             data={"prompt": "test"}
         )
         assert request.agent_identifier == "simple_prompt"
+        assert request.title == "Test Job"
         assert request.data == {"prompt": "test"}
         assert request.priority == 0  # default
         assert request.tags is None
@@ -176,44 +190,6 @@ class TestJobRequestResponseModels:
         assert response.agent_identifier == "simple_prompt"
         assert response.result == "Hello! How can I help you today?"
         assert response.error_message is None
-
-    def test_job_list_response_valid(self):
-        """Test JobListResponse with valid data"""
-        job = JobResponse(
-            id="job_123",
-            status=JobStatus.pending,
-            agent_identifier="simple_prompt",
-            data={"prompt": "test"},
-            created_at=datetime.now(),
-            updated_at=datetime.now()
-        )
-        response = JobListResponse(
-            jobs=[job],
-            total_count=1
-        )
-        assert len(response.jobs) == 1
-        assert response.total_count == 1
-        assert response.success is True
-
-    def test_job_create_response_valid(self):
-        """Test JobCreateResponse with valid data"""
-        response = JobCreateResponse(job_id="job_123")
-        assert response.job_id == "job_123"
-        assert response.success is True
-
-    def test_job_detail_response_valid(self):
-        """Test JobDetailResponse with valid data"""
-        job = JobResponse(
-            id="job_123",
-            status=JobStatus.running,
-            agent_identifier="simple_prompt",
-            data={"prompt": "test"},
-            created_at=datetime.now(),
-            updated_at=datetime.now()
-        )
-        response = JobDetailResponse(job=job)
-        assert response.job.id == "job_123"
-        assert response.success is True
 
 
 class TestJobUpdateModels:
@@ -271,34 +247,6 @@ class TestStatisticsModels:
         assert stats.failed_jobs == 8
         assert stats.success_rate == 91.4
 
-    def test_job_stats_response_valid(self):
-        """Test JobStatsResponse with valid data"""
-        stats = JobStats(
-            total_jobs=50,
-            pending_jobs=1,
-            running_jobs=0,
-            completed_jobs=45,
-            failed_jobs=4,
-            success_rate=91.8
-        )
-        response = JobStatsResponse(stats=stats)
-        assert response.stats.total_jobs == 50
-        assert response.success is True
-
-
-class TestAuthenticationModels:
-    """Test authentication models"""
-
-    def test_auth_response_valid(self):
-        """Test AuthResponse with valid data"""
-        user = UserInfo(
-            id="user_123",
-            email="test@example.com"
-        )
-        response = AuthResponse(user=user)
-        assert response.user.id == "user_123"
-        assert response.success is True
-
 
 class TestHealthModels:
     """Test health check models"""
@@ -325,6 +273,7 @@ class TestModelSerialization:
         """Test JobCreateRequest JSON serialization"""
         request = JobCreateRequest(
             agent_identifier="simple_prompt",
+            title="Test Job",
             data={"prompt": "Hello", "max_tokens": 500},
             priority=8,
             tags=["important", "test"]
@@ -332,6 +281,7 @@ class TestModelSerialization:
         
         json_data = request.model_dump()
         assert json_data["agent_identifier"] == "simple_prompt"
+        assert json_data["title"] == "Test Job"
         assert json_data["data"]["prompt"] == "Hello"
         assert json_data["priority"] == 8
         assert "important" in json_data["tags"]
@@ -372,6 +322,7 @@ class TestModelValidationEdgeCases:
         large_prompt = "x" * 10000  # 10KB prompt
         request = JobCreateRequest(
             agent_identifier="simple_prompt",
+            title="Large Job Test",
             data={"prompt": large_prompt, "max_tokens": 1000}
         )
         assert len(request.data["prompt"]) == 10000
@@ -380,6 +331,7 @@ class TestModelValidationEdgeCases:
         """Test minimal valid job data"""
         request = JobCreateRequest(
             agent_identifier="test_agent",
+            title="Minimal Test",
             data={}  # Empty data dict should be valid
         )
         assert request.data == {}

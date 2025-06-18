@@ -1,9 +1,10 @@
+import React from 'react';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import type { AgentInfo } from '@/lib/types';
 import { AgentSelector } from '@/components/AgentSelector';
 import { api } from '@/lib/api';
-import type { AgentInfo } from '@/lib/models';
 import { renderWithProviders } from '../utils';
 
 // Mock dependencies
@@ -32,6 +33,14 @@ const mockAgents: AgentInfo[] = [
     version: '1.0.0',
     enabled: true,
     has_error: false,
+    status: 'available',
+    metadata_extras: {},
+    is_loaded: true,
+    framework_version: '1.0.0',
+    execution_count: 0,
+    last_execution_time: null,
+    endpoints: [],
+    models: [],
     created_at: '2024-01-01T00:00:00Z',
     last_updated: '2024-01-01T00:00:00Z'
   },
@@ -45,6 +54,14 @@ const mockAgents: AgentInfo[] = [
     version: '1.1.0',
     enabled: true,
     has_error: false,
+    status: 'available',
+    metadata_extras: {},
+    is_loaded: true,
+    framework_version: '1.0.0',
+    execution_count: 0,
+    last_execution_time: null,
+    endpoints: [],
+    models: [],
     created_at: '2024-01-01T00:00:00Z',
     last_updated: '2024-01-01T00:00:00Z'
   },
@@ -58,6 +75,14 @@ const mockAgents: AgentInfo[] = [
     version: '1.0.0',
     enabled: true,
     has_error: false,
+    status: 'available',
+    metadata_extras: {},
+    is_loaded: true,
+    framework_version: '1.0.0',
+    execution_count: 0,
+    last_execution_time: null,
+    endpoints: [],
+    models: [],
     created_at: '2024-01-01T00:00:00Z',
     last_updated: '2024-01-01T00:00:00Z'
   },
@@ -71,6 +96,14 @@ const mockAgents: AgentInfo[] = [
     version: '0.1.0',
     enabled: false,
     has_error: false,
+    status: 'unavailable',
+    metadata_extras: {},
+    is_loaded: false,
+    framework_version: '1.0.0',
+    execution_count: 0,
+    last_execution_time: null,
+    endpoints: [],
+    models: [],
     created_at: '2024-01-01T00:00:00Z',
     last_updated: '2024-01-01T00:00:00Z'
   },
@@ -85,6 +118,14 @@ const mockAgents: AgentInfo[] = [
     enabled: true,
     has_error: true,
     error_message: 'Failed to initialize',
+    status: 'error',
+    metadata_extras: {},
+    is_loaded: false,
+    framework_version: '1.0.0',
+    execution_count: 0,
+    last_execution_time: null,
+    endpoints: [],
+    models: [],
     created_at: '2024-01-01T00:00:00Z',
     last_updated: '2024-01-01T00:00:00Z'
   }
@@ -527,7 +568,7 @@ describe('AgentSelector', () => {
     });
 
     it('should disable selector when no agents are available', () => {
-      const disabledAgents = mockAgents.filter(agent => !agent.enabled || agent.has_error);
+      const disabledAgents = mockAgents.filter(agent => agent.lifecycle_state !== 'enabled' || agent.has_error);
       
       renderWithProviders(
         <AgentSelector
@@ -600,7 +641,7 @@ describe('AgentSelector', () => {
     });
 
     it('should not show unavailable badge when all agents are available', () => {
-      const availableAgents = mockAgents.filter(agent => agent.enabled && !agent.has_error);
+      const availableAgents = mockAgents.filter(agent => agent.lifecycle_state === 'enabled' && !agent.has_error);
       
       renderWithProviders(
         <AgentSelector

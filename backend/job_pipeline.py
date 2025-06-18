@@ -23,10 +23,9 @@ from models import JobStatus
 from database import get_database_operations
 from agent import BaseAgent, AgentExecutionResult, get_agent_registry
 from agent_framework import get_registered_agents, validate_job_data
-from logging_system import get_logger, get_performance_logger
+from logging_system import get_logger
 
 logger = get_logger(__name__)
-perf_logger = get_performance_logger()
 
 class JobPriority(int, Enum):
     """Job priority levels"""
@@ -396,19 +395,17 @@ class JobPipeline:
             model_class = next(iter(agent_models.values()))
             validated_data = validate_job_data(job_task.job_data, model_class)
             
-            # Execute the job using the agent framework
-            with perf_logger.time_operation(f"job_execution_{job_task.agent_name}", user_id=job_task.user_id):
-                # Call _execute_job_logic directly to avoid duplicate status updates
-                # The pipeline maintains full control over job status management
-                result = await agent._execute_job_logic(validated_data)
+            # Execute the job
+            logger.info("Starting job execution", job_id=job_task.job_id, agent_name=job_task.agent_name)
+            
+            try:
+                result = await agent.execute_job(job_task.job_id, validated_data)
                 
-                # Ensure result has execution_time set
-                if result.execution_time is None:
-                    result.execution_time = time.time() - start_time
+                logger.info("Job execution completed", job_id=job_task.job_id, agent_name=job_task.agent_name)
                 
-                # Update agent state (normally done in execute_job)
-                agent.execution_count += 1
-                agent.last_execution_time = datetime.now(timezone.utc)
+            except Exception as e:
+                logger.error("Job execution failed", exception=e, job_id=job_task.job_id)
+                raise
             
             execution_time = result.execution_time
             

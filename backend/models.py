@@ -21,19 +21,6 @@ class JobStatus(str, Enum):
     completed = "completed"
     failed = "failed"
 
-# Base Models
-class BaseResponse(BaseModel):
-    """Base response model"""
-    success: bool = True
-    message: str = "Operation successful"
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-
-class ErrorResponse(BaseResponse):
-    """Error response model"""
-    success: bool = False
-    error_code: Optional[str] = None
-    details: Optional[Dict[str, Any]] = None
-
 # User Models
 class UserInfo(BaseModel):
     """User information model"""
@@ -125,59 +112,6 @@ class JobResponse(BaseModel):
         }
     )
 
-class JobListResponse(BaseResponse):
-    """Job list response model"""
-    jobs: List[JobResponse] = Field(..., description="List of jobs")
-    total_count: int = Field(..., description="Total number of jobs")
-    
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "success": True,
-                "message": "Jobs retrieved successfully",
-                "jobs": [],
-                "total_count": 0
-            }
-        }
-    )
-
-class JobCreateResponse(BaseResponse):
-    """Job creation response model"""
-    job_id: str = Field(..., description="Created job ID")
-    
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "success": True,
-                "message": "Job created successfully",
-                "job_id": "job_123"
-            }
-        }
-    )
-
-class JobDetailResponse(BaseResponse):
-    """Job detail response model"""
-    job: JobResponse = Field(..., description="Job details")
-    
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "success": True,
-                "message": "Job details retrieved successfully",
-                "job": {
-                    "id": "job_123",
-                    "status": "completed",
-                    "agent_identifier": "simple_prompt",
-                    "data": {"prompt": "Hello, how are you?"},
-                    "result": "Hello! I'm doing well, thank you.",
-                    "error_message": None,
-                    "created_at": "2024-01-01T10:00:00Z",
-                    "updated_at": "2024-01-01T10:01:00Z"
-                }
-            }
-        }
-    )
-
 class JobStatusUpdate(BaseModel):
     """Job status update model"""
     status: JobStatus = Field(..., description="New job status")
@@ -211,45 +145,6 @@ class JobStats(BaseModel):
                 "completed_jobs": 85,
                 "failed_jobs": 8,
                 "success_rate": 91.4
-            }
-        }
-    )
-
-class JobStatsResponse(BaseResponse):
-    """Job statistics response model"""
-    stats: JobStats = Field(..., description="Job statistics")
-    
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "success": True,
-                "message": "Job statistics retrieved successfully",
-                "stats": {
-                    "total_jobs": 100,
-                    "pending_jobs": 5,
-                    "running_jobs": 2,
-                    "completed_jobs": 85,
-                    "failed_jobs": 8,
-                    "success_rate": 91.4
-                }
-            }
-        }
-    )
-
-class AuthResponse(BaseResponse):
-    """Authentication response model"""
-    user: UserInfo = Field(..., description="User information")
-    
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "success": True,
-                "message": "Authentication successful",
-                "user": {
-                    "id": "123e4567-e89b-12d3-a456-426614174000",
-                    "email": "user@example.com",
-                    "metadata": {"name": "John Doe"}
-                }
             }
         }
     )

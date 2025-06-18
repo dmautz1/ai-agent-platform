@@ -91,7 +91,7 @@ export const JobDetails: React.FC = () => {
       const result = await api.jobs.rerun(job.id);
       
       toast.success(
-        `Job rerun successful! New job created.`,
+        `Job rerun initiated successfully! Processing new job...`,
         {
           title: `Original: ${job.id.slice(0, 8)}... → New: ${result.new_job_id.slice(0, 8)}...`,
           action: {
@@ -217,8 +217,10 @@ export const JobDetails: React.FC = () => {
 
   // Mobile header component
   const MobileHeader: React.FC<{ job: Job }> = ({ job }) => {
-    const agentIdentifier = job.agent_identifier || job.data?.agent_identifier || 'unknown';
-    const title = job.title || job.data?.title || `Job ${job.id.slice(0, 8)}`;
+    const dataAgentId = typeof job.data?.agent_identifier === 'string' ? job.data.agent_identifier : undefined;
+    const agentIdentifier = job.agent_identifier || dataAgentId || 'unknown';
+    const dataTitle = typeof job.data?.title === 'string' ? job.data.title : undefined;
+    const title = job.title || dataTitle || `Job ${job.id.slice(0, 8)}`;
     const isActiveJob = job.status === 'pending' || job.status === 'running';
 
     return (
@@ -400,8 +402,10 @@ export const JobDetails: React.FC = () => {
     );
   }
 
-  const agentIdentifier = job.agent_identifier || job.data?.agent_identifier || 'unknown';
-  const title = job.title || job.data?.title || `Job ${job.id.slice(0, 8)}`;
+  const dataAgentId = typeof job.data?.agent_identifier === 'string' ? job.data.agent_identifier : undefined;
+  const agentIdentifier = job.agent_identifier || dataAgentId || 'unknown';
+  const dataTitle = typeof job.data?.title === 'string' ? job.data.title : undefined;
+  const title = job.title || dataTitle || `Job ${job.id.slice(0, 8)}`;
   const isActiveJob = job.status === 'pending' || job.status === 'running';
 
   return (

@@ -13,10 +13,9 @@ Contains endpoints for:
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, List
 
-from logging_system import get_logger, get_performance_logger
+from logging_system import get_logger
 
 logger = get_logger(__name__)
-perf_logger = get_performance_logger()
 
 router = APIRouter(tags=["llm-providers"])
 
@@ -24,10 +23,9 @@ router = APIRouter(tags=["llm-providers"])
 @router.get("/google-ai/validate")
 async def validate_google_ai_setup():
     """Validate Google AI configuration - public endpoint for setup validation"""
-    with perf_logger.time_operation("google_ai_validate"):
-        logger.info("Google AI configuration validation requested")
-        
-        try:
+    logger.info("Google AI configuration validation requested")
+    
+    try:
             from config.google_ai import validate_google_ai_environment
             validation_result = validate_google_ai_environment()
             
@@ -49,7 +47,7 @@ async def validate_google_ai_setup():
                     "warnings": validation_result.get("warnings", [])
                 }
                 
-        except Exception as e:
+    except Exception as e:
             logger.error("Google AI validation failed with exception", exception=e)
             return {
                 "status": "error",
@@ -60,10 +58,9 @@ async def validate_google_ai_setup():
 @router.get("/google-ai/models")
 async def get_available_models():
     """Get available Google AI models - public endpoint"""
-    with perf_logger.time_operation("google_ai_models"):
-        logger.info("Google AI models requested")
-        
-        try:
+    logger.info("Google AI models requested")
+    
+    try:
             from services.llm_service import get_unified_llm_service
             
             llm_service = get_unified_llm_service()
@@ -76,7 +73,7 @@ async def get_available_models():
                 "provider": "google"
             }
             
-        except Exception as e:
+    except Exception as e:
             logger.error("Google AI models retrieval failed", exception=e)
             return {
                 "status": "error",
@@ -87,10 +84,9 @@ async def get_available_models():
 @router.get("/google-ai/connection-test")
 async def test_google_ai_connection():
     """Test Google AI connection - public endpoint"""
-    with perf_logger.time_operation("google_ai_connection_test"):
-        logger.info("Google AI connection test requested")
-        
-        try:
+    logger.info("Google AI connection test requested")
+    
+    try:
             from services.llm_service import get_unified_llm_service
             
             llm_service = get_unified_llm_service()
@@ -113,7 +109,7 @@ async def test_google_ai_connection():
                     "provider": "google"
                 }
                 
-        except Exception as e:
+    except Exception as e:
             logger.error("Google AI connection test failed with exception", exception=e)
             return {
                 "status": "error",
@@ -125,10 +121,9 @@ async def test_google_ai_connection():
 @router.get("/openai/validate")
 async def validate_openai_setup():
     """Validate OpenAI configuration - public endpoint for setup validation"""
-    with perf_logger.time_operation("openai_validate"):
-        logger.info("OpenAI configuration validation requested")
-        
-        try:
+    logger.info("OpenAI configuration validation requested")
+    
+    try:
             from config.openai import validate_openai_environment
             validation_result = validate_openai_environment()
             
@@ -150,7 +145,7 @@ async def validate_openai_setup():
                     "warnings": validation_result.get("warnings", [])
                 }
                 
-        except Exception as e:
+    except Exception as e:
             logger.error("OpenAI validation failed with exception", exception=e)
             return {
                 "status": "error",
@@ -161,10 +156,9 @@ async def validate_openai_setup():
 @router.get("/openai/models")
 async def get_available_openai_models():
     """Get available OpenAI models - public endpoint"""
-    with perf_logger.time_operation("openai_models"):
-        logger.info("OpenAI models requested")
-        
-        try:
+    logger.info("OpenAI models requested")
+    
+    try:
             from services.llm_service import get_unified_llm_service
             
             llm_service = get_unified_llm_service()
@@ -177,7 +171,7 @@ async def get_available_openai_models():
                 "provider": "openai"
             }
             
-        except Exception as e:
+    except Exception as e:
             logger.error("OpenAI models retrieval failed", exception=e)
             return {
                 "status": "error",
@@ -188,10 +182,9 @@ async def get_available_openai_models():
 @router.get("/openai/connection-test")
 async def test_openai_connection():
     """Test OpenAI connection - public endpoint"""
-    with perf_logger.time_operation("openai_connection_test"):
-        logger.info("OpenAI connection test requested")
-        
-        try:
+    logger.info("OpenAI connection test requested")
+    
+    try:
             from services.llm_service import get_unified_llm_service
             
             llm_service = get_unified_llm_service()
@@ -214,7 +207,7 @@ async def test_openai_connection():
                     "provider": "openai"
                 }
                 
-        except Exception as e:
+    except Exception as e:
             logger.error("OpenAI connection test failed with exception", exception=e)
             return {
                 "status": "error",
@@ -226,10 +219,9 @@ async def test_openai_connection():
 @router.get("/grok/validate")
 async def validate_grok_setup():
     """Validate Grok configuration - public endpoint for setup validation"""
-    with perf_logger.time_operation("grok_validate"):
-        logger.info("Grok configuration validation requested")
-        
-        try:
+    logger.info("Grok configuration validation requested")
+    
+    try:
             from config.grok import validate_grok_environment
             validation_result = validate_grok_environment()
             
@@ -251,7 +243,7 @@ async def validate_grok_setup():
                     "warnings": validation_result.get("warnings", [])
                 }
                 
-        except Exception as e:
+    except Exception as e:
             logger.error("Grok validation failed with exception", exception=e)
             return {
                 "status": "error",
@@ -262,10 +254,9 @@ async def validate_grok_setup():
 @router.get("/grok/models")
 async def get_available_grok_models():
     """Get available Grok models - public endpoint"""
-    with perf_logger.time_operation("grok_models"):
-        logger.info("Grok models requested")
-        
-        try:
+    logger.info("Grok models requested")
+    
+    try:
             from services.llm_service import get_unified_llm_service
             
             llm_service = get_unified_llm_service()
@@ -278,7 +269,7 @@ async def get_available_grok_models():
                 "provider": "grok"
             }
             
-        except Exception as e:
+    except Exception as e:
             logger.error("Grok models retrieval failed", exception=e)
             return {
                 "status": "error",
@@ -289,10 +280,9 @@ async def get_available_grok_models():
 @router.get("/grok/connection-test")
 async def test_grok_connection():
     """Test Grok connection - public endpoint"""
-    with perf_logger.time_operation("grok_connection_test"):
-        logger.info("Grok connection test requested")
-        
-        try:
+    logger.info("Grok connection test requested")
+    
+    try:
             from services.llm_service import get_unified_llm_service
             
             llm_service = get_unified_llm_service()
@@ -315,7 +305,7 @@ async def test_grok_connection():
                     "provider": "grok"
                 }
                 
-        except Exception as e:
+    except Exception as e:
             logger.error("Grok connection test failed with exception", exception=e)
             return {
                 "status": "error",
@@ -327,10 +317,9 @@ async def test_grok_connection():
 @router.get("/anthropic/validate")
 async def validate_anthropic_setup():
     """Validate Anthropic configuration - public endpoint for setup validation"""
-    with perf_logger.time_operation("anthropic_validate"):
-        logger.info("Anthropic configuration validation requested")
-        
-        try:
+    logger.info("Anthropic configuration validation requested")
+    
+    try:
             from config.anthropic import validate_anthropic_environment
             validation_result = validate_anthropic_environment()
             
@@ -352,7 +341,7 @@ async def validate_anthropic_setup():
                     "warnings": validation_result.get("warnings", [])
                 }
                 
-        except Exception as e:
+    except Exception as e:
             logger.error("Anthropic validation failed with exception", exception=e)
             return {
                 "status": "error",
@@ -363,10 +352,9 @@ async def validate_anthropic_setup():
 @router.get("/anthropic/models")
 async def get_available_anthropic_models():
     """Get available Anthropic models - public endpoint"""
-    with perf_logger.time_operation("anthropic_models"):
-        logger.info("Anthropic models requested")
-        
-        try:
+    logger.info("Anthropic models requested")
+    
+    try:
             from services.llm_service import get_unified_llm_service
             
             llm_service = get_unified_llm_service()
@@ -379,7 +367,7 @@ async def get_available_anthropic_models():
                 "provider": "anthropic"
             }
             
-        except Exception as e:
+    except Exception as e:
             logger.error("Anthropic models retrieval failed", exception=e)
             return {
                 "status": "error",
@@ -390,10 +378,9 @@ async def get_available_anthropic_models():
 @router.get("/anthropic/connection-test")
 async def test_anthropic_connection():
     """Test Anthropic connection - public endpoint"""
-    with perf_logger.time_operation("anthropic_connection_test"):
-        logger.info("Anthropic connection test requested")
-        
-        try:
+    logger.info("Anthropic connection test requested")
+    
+    try:
             from services.llm_service import get_unified_llm_service
             
             llm_service = get_unified_llm_service()
@@ -416,7 +403,7 @@ async def test_anthropic_connection():
                     "provider": "anthropic"
                 }
                 
-        except Exception as e:
+    except Exception as e:
             logger.error("Anthropic connection test failed with exception", exception=e)
             return {
                 "status": "error",
@@ -428,10 +415,9 @@ async def test_anthropic_connection():
 @router.get("/deepseek/validate")
 async def validate_deepseek_setup():
     """Validate DeepSeek configuration - public endpoint for setup validation"""
-    with perf_logger.time_operation("deepseek_validate"):
-        logger.info("DeepSeek configuration validation requested")
-        
-        try:
+    logger.info("DeepSeek configuration validation requested")
+    
+    try:
             from config.deepseek import validate_deepseek_environment
             validation_result = validate_deepseek_environment()
             
@@ -453,7 +439,7 @@ async def validate_deepseek_setup():
                     "warnings": validation_result.get("warnings", [])
                 }
                 
-        except Exception as e:
+    except Exception as e:
             logger.error("DeepSeek validation failed with exception", exception=e)
             return {
                 "status": "error",
@@ -464,10 +450,9 @@ async def validate_deepseek_setup():
 @router.get("/deepseek/models")
 async def get_available_deepseek_models():
     """Get available DeepSeek models - public endpoint"""
-    with perf_logger.time_operation("deepseek_models"):
-        logger.info("DeepSeek models requested")
-        
-        try:
+    logger.info("DeepSeek models requested")
+    
+    try:
             from services.llm_service import get_unified_llm_service
             
             llm_service = get_unified_llm_service()
@@ -480,7 +465,7 @@ async def get_available_deepseek_models():
                 "provider": "deepseek"
             }
             
-        except Exception as e:
+    except Exception as e:
             logger.error("DeepSeek models retrieval failed", exception=e)
             return {
                 "status": "error",
@@ -491,10 +476,9 @@ async def get_available_deepseek_models():
 @router.get("/deepseek/connection-test")
 async def test_deepseek_connection():
     """Test DeepSeek connection - public endpoint"""
-    with perf_logger.time_operation("deepseek_connection_test"):
-        logger.info("DeepSeek connection test requested")
-        
-        try:
+    logger.info("DeepSeek connection test requested")
+    
+    try:
             from services.llm_service import get_unified_llm_service
             
             llm_service = get_unified_llm_service()
@@ -517,7 +501,7 @@ async def test_deepseek_connection():
                     "provider": "deepseek"
                 }
                 
-        except Exception as e:
+    except Exception as e:
             logger.error("DeepSeek connection test failed with exception", exception=e)
             return {
                 "status": "error",
@@ -529,10 +513,9 @@ async def test_deepseek_connection():
 @router.get("/llama/validate")
 async def validate_llama_setup():
     """Validate Llama configuration - public endpoint for setup validation"""
-    with perf_logger.time_operation("llama_validate"):
-        logger.info("Llama configuration validation requested")
-        
-        try:
+    logger.info("Llama configuration validation requested")
+    
+    try:
             from config.llama import validate_llama_environment
             validation_result = validate_llama_environment()
             
@@ -554,7 +537,7 @@ async def validate_llama_setup():
                     "warnings": validation_result.get("warnings", [])
                 }
                 
-        except Exception as e:
+    except Exception as e:
             logger.error("Llama validation failed with exception", exception=e)
             return {
                 "status": "error",
@@ -565,10 +548,9 @@ async def validate_llama_setup():
 @router.get("/llama/models")
 async def get_available_llama_models():
     """Get available Llama models - public endpoint"""
-    with perf_logger.time_operation("llama_models"):
-        logger.info("Llama models requested")
-        
-        try:
+    logger.info("Llama models requested")
+    
+    try:
             from services.llm_service import get_unified_llm_service
             
             llm_service = get_unified_llm_service()
@@ -581,7 +563,7 @@ async def get_available_llama_models():
                 "provider": "llama"
             }
             
-        except Exception as e:
+    except Exception as e:
             logger.error("Llama models retrieval failed", exception=e)
             return {
                 "status": "error",
@@ -592,10 +574,9 @@ async def get_available_llama_models():
 @router.get("/llama/connection-test")
 async def test_llama_connection():
     """Test Llama connection - public endpoint"""
-    with perf_logger.time_operation("llama_connection_test"):
-        logger.info("Llama connection test requested")
-        
-        try:
+    logger.info("Llama connection test requested")
+    
+    try:
             from services.llm_service import get_unified_llm_service
             
             llm_service = get_unified_llm_service()
@@ -618,7 +599,7 @@ async def test_llama_connection():
                     "provider": "llama"
                 }
                 
-        except Exception as e:
+    except Exception as e:
             logger.error("Llama connection test failed with exception", exception=e)
             return {
                 "status": "error",

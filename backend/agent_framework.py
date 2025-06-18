@@ -20,10 +20,9 @@ from pydantic import BaseModel
 
 from agent import BaseAgent, AgentExecutionResult
 from auth import get_current_user
-from logging_system import get_logger, get_performance_logger
+from logging_system import get_logger
 
 logger = get_logger(__name__)
-perf_logger = get_performance_logger()
 
 # Global registry for agent endpoints and models
 _agent_endpoints = {}
@@ -210,7 +209,6 @@ def create_endpoint_wrapper(agent_instance: SelfContainedAgent, method: Callable
         operation_name = f"{agent_name}_{method.__name__}"
         
         try:
-            with perf_logger.time_operation(operation_name, user_id=user.get('id') if user else None):
                 logger.info(f"Executing {operation_name}", 
                            user_id=user.get('id') if user else None,
                            endpoint=endpoint_info['path'])

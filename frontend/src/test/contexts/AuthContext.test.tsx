@@ -3,7 +3,7 @@ import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider, useAuth } from '../../contexts/AuthContext'
-import type { LoginRequest } from '../../lib/models'
+import type { LoginRequest } from '../../lib/types'
 import React from 'react'
 
 // Mock Supabase using factory function

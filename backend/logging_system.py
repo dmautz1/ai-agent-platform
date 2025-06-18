@@ -3,7 +3,6 @@ Comprehensive logging system for the AI Agent Platform.
 
 This module provides:
 - Structured logging with multiple loggers
-- Performance monitoring and metrics
 - Security event logging
 - Middleware for request/response logging
 - Development and production configurations
@@ -203,74 +202,6 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         
         return filtered
 
-class PerformanceLogger:
-    """Logger for performance monitoring and metrics"""
-    
-    def __init__(self, logger: StructuredLogger):
-        self.logger = logger
-        self.metrics: Dict[str, List[float]] = {}
-    
-    @contextmanager
-    def time_operation(self, operation_name: str, **context):
-        """Context manager for timing operations"""
-        start_time = time.time()
-        self.logger.set_context(operation=operation_name, **context)
-        
-        try:
-            yield
-            duration = time.time() - start_time
-            
-            # Store metric
-            if operation_name not in self.metrics:
-                self.metrics[operation_name] = []
-            self.metrics[operation_name].append(duration)
-            
-            # Log operation
-            self.logger.info(
-                f"Operation completed: {operation_name}",
-                duration_seconds=round(duration, 4)
-            )
-            
-            # Warn on slow operations
-            if duration > 1.0:
-                self.logger.warning(
-                    f"Slow operation: {operation_name}",
-                    duration_seconds=round(duration, 4),
-                    threshold_seconds=1.0
-                )
-                
-        except Exception as e:
-            duration = time.time() - start_time
-            self.logger.error(
-                f"Operation failed: {operation_name}",
-                exception=e,
-                duration_seconds=round(duration, 4)
-            )
-            raise
-        finally:
-            self.logger.clear_context()
-    
-    def get_metrics_summary(self) -> Dict[str, Dict[str, float]]:
-        """Get summary statistics for all tracked operations"""
-        summary = {}
-        
-        for operation, times in self.metrics.items():
-            if times:
-                summary[operation] = {
-                    'count': len(times),
-                    'total_time': sum(times),
-                    'average_time': sum(times) / len(times),
-                    'min_time': min(times),
-                    'max_time': max(times)
-                }
-        
-        return summary
-    
-    def log_metrics_summary(self):
-        """Log performance metrics summary"""
-        summary = self.get_metrics_summary()
-        self.logger.info("Performance metrics summary", metrics=summary)
-
 class SecurityLogger:
     """Logger for security events and monitoring"""
     
@@ -444,7 +375,6 @@ class AgentLogger:
 
 # Global logger instances
 _main_logger: Optional[StructuredLogger] = None
-_performance_logger: Optional[PerformanceLogger] = None
 _security_logger: Optional[SecurityLogger] = None
 _database_logger: Optional[DatabaseLogger] = None
 _agent_logger: Optional[AgentLogger] = None
@@ -455,14 +385,6 @@ def get_logger(name: str = __name__) -> StructuredLogger:
     if _main_logger is None:
         _main_logger = StructuredLogger(name)
     return _main_logger
-
-def get_performance_logger() -> PerformanceLogger:
-    """Get or create performance logger instance"""
-    global _performance_logger
-    if _performance_logger is None:
-        logger = get_logger('performance')
-        _performance_logger = PerformanceLogger(logger)
-    return _performance_logger
 
 def get_security_logger() -> SecurityLogger:
     """Get or create security logger instance"""
@@ -554,8 +476,4 @@ def log_startup_info():
 def log_shutdown_info():
     """Log application shutdown information"""
     logger = get_logger('shutdown')
-    logger.info("Application shutting down")
-    
-    # Log final performance metrics
-    perf_logger = get_performance_logger()
-    perf_logger.log_metrics_summary() 
+    logger.info("Application shutting down") 

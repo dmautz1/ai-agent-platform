@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import type { User, AuthTokens, LoginRequest } from '@/lib/models';
+import type { User, AuthTokens, LoginRequest } from '@/lib/types';
 
 interface AuthState {
   user: User | null;
@@ -51,12 +51,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const user: User = {
         id: data.user.id,
         email: data.user.email!,
-        name: data.user.user_metadata?.name || data.user.email!.split('@')[0],
-        role: data.user.user_metadata?.role || 'user',
-        is_active: true,
-        created_at: data.user.created_at,
-        updated_at: data.user.updated_at || data.user.created_at,
-        last_login: new Date().toISOString(),
+        user_metadata: data.user.user_metadata,
+        app_metadata: data.user.app_metadata,
       };
 
       const tokens: AuthTokens = {
@@ -121,12 +117,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const user: User = {
           id: data.session.user.id,
           email: data.session.user.email!,
-          name: data.session.user.user_metadata?.name || data.session.user.email!.split('@')[0],
-          role: data.session.user.user_metadata?.role || 'user',
-          is_active: true,
-          created_at: data.session.user.created_at,
-          updated_at: data.session.user.updated_at || data.session.user.created_at,
-          last_login: data.session.user.last_sign_in_at || new Date().toISOString(),
+          user_metadata: data.session.user.user_metadata,
+          app_metadata: data.session.user.app_metadata,
         };
 
         const tokens: AuthTokens = {
@@ -177,12 +169,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const user: User = {
           id: session.user.id,
           email: session.user.email!,
-          name: session.user.user_metadata?.name || session.user.email!.split('@')[0],
-          role: session.user.user_metadata?.role || 'user',
-          is_active: true,
-          created_at: session.user.created_at,
-          updated_at: session.user.updated_at || session.user.created_at,
-          last_login: session.user.last_sign_in_at || new Date().toISOString(),
+          user_metadata: session.user.user_metadata,
+          app_metadata: session.user.app_metadata,
         };
 
         const tokens: AuthTokens = {

@@ -34,7 +34,7 @@ Welcome to the AI Agent Platform documentation! This platform provides a complet
 ### Production Ready
 - **Real-Time Updates** - Live job status without page refresh
 - **Secure Authentication** - Supabase Auth with JWT tokens  
-- **Comprehensive Testing** - 100% backend, 97.6% frontend test coverage
+- **Comprehensive Testing** - 95.3% backend, 98.6% frontend test coverage
 - **Deployment Ready** - Docker, DigitalOcean, Vercel support
 
 ## 🤖 AI Provider Integration
@@ -176,4 +176,4 @@ npm run test:frontend         # Frontend only
 
 ---
 
-**Need help?** Check our [Troubleshooting Guide](getting-started/troubleshooting.md) or [create an issue](https://github.com/dmautz1/ai-agent-platform/issues/new/choose). 
+**Need help?** Check our [Troubleshooting Guide](getting-started/troubleshooting.md) or [create an issue](https://github.com/dmautz1/ai-agent-platform/issues/new/choose).

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { api, handleApiError } from '@/lib/api';
-import type { AgentInfo } from '@/lib/models';
+import type { AgentInfo } from '@/lib/types';
 import { getResponsiveGrid, responsivePadding } from '@/lib/responsive';
 import { useToast } from '@/components/ui/toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -486,7 +486,7 @@ export const AgentDirectory: React.FC<AgentDirectoryProps> = ({
   const availableEnvironments = useMemo(() => {
     const environments = new Set<string>();
     agents.forEach(agent => {
-      agent.supported_environments.forEach(env => environments.add(env));
+      agent.supported_environments?.forEach(env => environments.add(env));
     });
     return Array.from(environments).sort();
   }, [agents]);
@@ -494,7 +494,9 @@ export const AgentDirectory: React.FC<AgentDirectoryProps> = ({
   const availableStates = useMemo(() => {
     const states = new Set<string>();
     agents.forEach(agent => {
-      states.add(agent.lifecycle_state);
+      if (agent.lifecycle_state) {
+        states.add(agent.lifecycle_state);
+      }
     });
     return Array.from(states).sort();
   }, [agents]);
@@ -514,7 +516,7 @@ export const AgentDirectory: React.FC<AgentDirectoryProps> = ({
 
       // Filter by environment (typically for dev/test)
       if (selectedEnvironment !== 'all') {
-        if (!agent.supported_environments.includes(selectedEnvironment)) {
+        if (!agent.supported_environments?.includes(selectedEnvironment)) {
           return false;
         }
       }

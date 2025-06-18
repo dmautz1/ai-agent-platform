@@ -3,13 +3,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { userEvent } from '@testing-library/user-event'
 import { renderWithProviders, mockJobs, mockJob } from '../utils'
 import { JobList } from '../../components/JobList'
-import type { Job } from '../../lib/models'
+import type { Job } from '../../lib/api'
 
 // Mock the API module
 vi.mock('../../lib/api', () => ({
   api: {
     jobs: {
       getAll: vi.fn(() => Promise.resolve([])),
+      rerun: vi.fn(() => Promise.resolve({ new_job_id: 'new-job-123' })),
     },
   },
   handleApiError: vi.fn((error) => error.message || 'An error occurred'),
@@ -63,10 +64,10 @@ describe('JobList Component', () => {
     it('should render job data correctly', () => {
       renderWithProviders(<JobList {...defaultProps} />)
       
-      // Check that agent identifiers are displayed (uppercase with spaces)
-      expect(screen.getByText('EXAMPLE RESEARCH AGENT')).toBeInTheDocument()
-      expect(screen.getByText('CONTENT SUMMARIZER')).toBeInTheDocument()
-      expect(screen.getByText('WEB DATA EXTRACTOR')).toBeInTheDocument()
+      // Check that agent identifiers are displayed (converted from snake_case to Title Case)
+      expect(screen.getByText('Example Research Agent')).toBeInTheDocument()
+      expect(screen.getByText('Content Summarizer')).toBeInTheDocument()
+      expect(screen.getByText('Web Data Extractor')).toBeInTheDocument()
       
       // Check status badges
       expect(screen.getByText('Completed')).toBeInTheDocument()
@@ -194,7 +195,7 @@ describe('JobList Component', () => {
       renderWithProviders(<JobList {...defaultProps} jobs={jobWithInvalidDate} />)
       
       // Should not throw an error and should render something
-      expect(screen.getByText('EXAMPLE RESEARCH AGENT')).toBeInTheDocument()
+      expect(screen.getByText('Example Research Agent')).toBeInTheDocument()
     })
   })
 
@@ -202,7 +203,7 @@ describe('JobList Component', () => {
     it('should extract agent identifier from job data correctly', () => {
       renderWithProviders(<JobList {...defaultProps} />)
       
-      expect(screen.getByText('EXAMPLE RESEARCH AGENT')).toBeInTheDocument()
+      expect(screen.getByText('Example Research Agent')).toBeInTheDocument()
     })
 
     it('should show UNKNOWN for missing agent identifier', () => {

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { FormFieldSchema } from '@/lib/models';
+import type { FormFieldSchema } from '@/lib/types';
 import type { ValidationError, ApiValidationError } from './types';
 
 // ============================================================================

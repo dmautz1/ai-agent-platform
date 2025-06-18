@@ -24,11 +24,11 @@ from fastapi.testclient import TestClient
 from starlette.responses import Response
 
 from logging_system import (
-    StructuredLogger, RequestLoggingMiddleware, PerformanceLogger,
-    SecurityLogger, DatabaseLogger, AgentLogger,
-    get_logger, get_performance_logger, get_security_logger,
+    StructuredLogger, RequestLoggingMiddleware, SecurityLogger,
+    DatabaseLogger, AgentLogger,
+    get_logger, get_security_logger,
     get_database_logger, get_agent_logger, setup_logging_middleware,
-    log_function_calls, log_startup_info, log_shutdown_info
+    log_function_calls, log_startup_info, log_shutdown_info,
 )
 
 # Utility for capturing log output - moved to global scope
@@ -220,61 +220,6 @@ class TestRequestLoggingMiddleware:
         assert self.logger.error.called
         assert self.logger.clear_context.called
 
-class TestPerformanceLogger:
-    """Test PerformanceLogger functionality"""
-
-    def setup_method(self):
-        """Set up test performance logger"""
-        self.structured_logger = Mock(spec=StructuredLogger)
-        self.perf_logger = PerformanceLogger(self.structured_logger)
-
-    def test_time_operation_success(self):
-        """Test timing successful operation"""
-        with self.perf_logger.time_operation("test_operation", context="test"):
-            time.sleep(0.01)  # Small delay
-        
-        assert "test_operation" in self.perf_logger.metrics
-        assert len(self.perf_logger.metrics["test_operation"]) == 1
-        assert self.perf_logger.metrics["test_operation"][0] >= 0.01
-        
-        # Should log operation completion
-        assert self.structured_logger.info.called
-
-    def test_time_operation_failure(self):
-        """Test timing failed operation"""
-        with pytest.raises(ValueError):
-            with self.perf_logger.time_operation("failing_operation"):
-                raise ValueError("Test error")
-        
-        # Should log operation failure
-        assert self.structured_logger.error.called
-
-    def test_slow_operation_warning(self):
-        """Test warning for slow operations"""
-        with patch('time.time', side_effect=[0, 2.0]):  # 2 second operation
-            with self.perf_logger.time_operation("slow_operation"):
-                pass
-        
-        # Should log warning for slow operation
-        assert self.structured_logger.warning.called
-
-    def test_get_metrics_summary(self):
-        """Test metrics summary generation"""
-        # Add some mock metrics
-        self.perf_logger.metrics["operation1"] = [0.1, 0.2, 0.3]
-        self.perf_logger.metrics["operation2"] = [0.5, 1.0]
-        
-        summary = self.perf_logger.get_metrics_summary()
-        
-        assert "operation1" in summary
-        assert summary["operation1"]["count"] == 3
-        assert abs(summary["operation1"]["average_time"] - 0.2) < 0.01  # Allow for floating point precision
-        assert summary["operation1"]["min_time"] == 0.1
-        assert summary["operation1"]["max_time"] == 0.3
-        
-        assert "operation2" in summary
-        assert summary["operation2"]["count"] == 2
-
 class TestSecurityLogger:
     """Test SecurityLogger functionality"""
 
@@ -461,11 +406,6 @@ class TestGlobalLoggerFunctions:
         assert logger1 is logger2
         assert isinstance(logger1, StructuredLogger)
 
-    def test_get_performance_logger(self):
-        """Test performance logger factory"""
-        perf_logger = get_performance_logger()
-        assert isinstance(perf_logger, PerformanceLogger)
-
     def test_get_security_logger(self):
         """Test security logger factory"""
         sec_logger = get_security_logger()
@@ -567,18 +507,22 @@ class TestStartupShutdownLogging:
 
     def test_log_shutdown_info(self):
         """Test logging shutdown information"""
-        with patch('logging_system.get_logger') as mock_get_logger, \
-             patch('logging_system.get_performance_logger') as mock_get_perf:
-            
-            mock_logger = Mock()
-            mock_perf_logger = Mock()
-            mock_get_logger.return_value = mock_logger
-            mock_get_perf.return_value = mock_perf_logger
-            
-            log_shutdown_info()
-            
-            mock_logger.info.assert_called_once()
-            mock_perf_logger.log_metrics_summary.assert_called_once()
+        mock_logger = Mock()
+        mock_sec_logger = Mock()
+        
+        with patch('logging_system.get_logger', return_value=mock_logger):
+            with patch('logging_system.get_security_logger', return_value=mock_sec_logger):
+                log_shutdown_info()
+                
+                # Check that shutdown was logged
+                mock_logger.info.assert_called()
+                
+                # The log_metrics_summary method doesn't exist, so we won't check for it
+                # mock_sec_logger.log_metrics_summary.assert_called_once()
+                
+                # Verify the call was made with appropriate message
+                call_args = mock_logger.info.call_args[0]
+                assert "shutdown" in call_args[0].lower() or "shutting down" in call_args[0].lower()
 
 class TestLoggingIntegration:
     """Integration tests for the complete logging system"""
@@ -587,12 +531,10 @@ class TestLoggingIntegration:
         """Test complete logging flow with all components"""
         # Create loggers
         main_logger = get_logger('integration_test')
-        perf_logger = get_performance_logger()
         security_logger = get_security_logger()
         
         # Test that they're all working
         assert isinstance(main_logger, StructuredLogger)
-        assert isinstance(perf_logger, PerformanceLogger)
         assert isinstance(security_logger, SecurityLogger)
         
         # Test context sharing
