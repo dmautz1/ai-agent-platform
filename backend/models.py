@@ -7,11 +7,59 @@ Updated to use generic string fields instead of hardcoded agent/job type enums.
 """
 
 from pydantic import BaseModel, Field, validator, EmailStr, field_validator, ConfigDict, model_validator
-from typing import Optional, Any, Dict, List, Union
+from typing import Optional, Any, Dict, List, Union, Generic, TypeVar
 from datetime import datetime
 from enum import Enum
 import uuid
 import re
+
+# TypeVar for generic ApiResponse typing
+T = TypeVar('T')
+
+# Unified API Response Model
+class ApiResponse(BaseModel, Generic[T]):
+    """
+    Unified API response wrapper for all endpoints.
+    
+    Provides consistent response structure across the platform with:
+    - success: Boolean indicating if the request was successful
+    - result: The actual response data (generic type T)
+    - message: Optional human-readable message
+    - error: Optional error message for failed requests
+    - metadata: Optional additional information about the response
+    """
+    success: bool = Field(..., description="Whether the request was successful")
+    result: Optional[T] = Field(default=None, description="The response data")
+    message: Optional[str] = Field(default=None, description="Human-readable message")
+    error: Optional[str] = Field(default=None, description="Error message if request failed")
+    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Additional response metadata")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "description": "Successful response with result",
+                    "value": {
+                        "success": True,
+                        "result": {"id": "123", "name": "Example"},
+                        "message": "Operation completed successfully",
+                        "error": None,
+                        "metadata": {"timestamp": "2024-01-01T10:00:00Z", "version": "1.0"}
+                    }
+                },
+                {
+                    "description": "Error response",
+                    "value": {
+                        "success": False,
+                        "result": None,
+                        "message": "Operation failed",
+                        "error": "Invalid input parameters",
+                        "metadata": {"error_code": "VALIDATION_ERROR", "timestamp": "2024-01-01T10:00:00Z"}
+                    }
+                }
+            ]
+        }
+    )
 
 # Enums
 class JobStatus(str, Enum):

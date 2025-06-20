@@ -15,11 +15,14 @@ import json
 from typing import Dict, List, Any, Optional, Callable, Type, get_type_hints
 from functools import wraps
 from abc import ABCMeta
+from datetime import datetime, timezone
 from fastapi import HTTPException, Depends, Request
 from pydantic import BaseModel
 
 from agent import BaseAgent, AgentExecutionResult
 from auth import get_current_user
+from models import ApiResponse
+from utils.responses import create_success_response, create_error_response
 from logging_system import get_logger
 
 logger = get_logger(__name__)
@@ -157,6 +160,83 @@ class SelfContainedAgent(BaseAgent, metaclass=AgentMeta):
             # Clean up frame reference
             del frame
     
+    def success_response(self, result: Any, message: str = None, **metadata) -> ApiResponse:
+        """
+        Create a successful ApiResponse with agent metadata.
+        
+        Args:
+            result: The response data
+            message: Optional success message
+            **metadata: Additional metadata fields
+            
+        Returns:
+            ApiResponse instance with success=True and agent metadata
+        """
+        agent_metadata = {
+            "agent_name": self.name,
+            "agent_framework": "self_contained",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            **metadata
+        }
+        
+        return create_success_response(
+            result=result,
+            message=message,
+            metadata=agent_metadata
+        )
+    
+    def error_response(self, error_message: str, message: str = None, **metadata) -> ApiResponse:
+        """
+        Create an error ApiResponse with agent metadata.
+        
+        Args:
+            error_message: The error description
+            message: Optional human-readable message
+            **metadata: Additional metadata fields
+            
+        Returns:
+            ApiResponse instance with success=False and agent metadata
+        """
+        agent_metadata = {
+            "agent_name": self.name,
+            "agent_framework": "self_contained",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            **metadata
+        }
+        
+        return create_error_response(
+            error_message=error_message,
+            message=message,
+            metadata=agent_metadata
+        )
+    
+    def validation_error_response(self, validation_errors: List[Dict[str, Any]], message: str = None) -> ApiResponse:
+        """
+        Create an ApiResponse for validation errors.
+        
+        Args:
+            validation_errors: List of validation error details
+            message: Optional custom message
+            
+        Returns:
+            ApiResponse instance with formatted validation errors and agent metadata
+        """
+        from utils.responses import create_validation_error_response
+        
+        # Get the base validation error response
+        response = create_validation_error_response(validation_errors, message)
+        
+        # Add agent metadata
+        if response.metadata is None:
+            response.metadata = {}
+        
+        response.metadata.update({
+            "agent_name": self.name,
+            "agent_framework": "self_contained"
+        })
+        
+        return response
+    
     @classmethod
     def get_endpoints(cls) -> List[Dict[str, Any]]:
         """Get all endpoints defined for this agent"""
@@ -201,60 +281,104 @@ class SelfContainedAgent(BaseAgent, metaclass=AgentMeta):
         return base_info
 
 def create_endpoint_wrapper(agent_instance: SelfContainedAgent, method: Callable, endpoint_info: Dict[str, Any]):
-    """Create a FastAPI endpoint wrapper for an agent method"""
+    """Create a FastAPI endpoint wrapper for an agent method that returns ApiResponse format"""
     
     @wraps(method)
     async def wrapper(request: Request, request_data: dict = None, user: dict = None):
         agent_name = agent_instance.name
         operation_name = f"{agent_name}_{method.__name__}"
+        start_time = datetime.now(timezone.utc)
         
         try:
-                logger.info(f"Executing {operation_name}", 
-                           user_id=user.get('id') if user else None,
-                           endpoint=endpoint_info['path'])
-                
-                # Get method signature to determine what parameters to pass
-                sig = inspect.signature(method)
-                params = list(sig.parameters.keys())[1:]  # Skip 'self'
-                
-                # Prepare arguments based on method signature
-                args = []
-                kwargs = {}
-                
-                for param_name in params:
-                    if param_name == 'request_data' and request_data is not None:
-                        args.append(request_data)
-                    elif param_name == 'user' and user is not None:
-                        args.append(user)
-                    elif param_name == 'request':
-                        args.append(request)
-                
-                # Execute the method
-                if inspect.iscoroutinefunction(method):
-                    result = await method(agent_instance, *args, **kwargs)
-                else:
-                    result = method(agent_instance, *args, **kwargs)
-                
-                logger.info(f"Successfully executed {operation_name}",
-                           user_id=user.get('id') if user else None)
-                
-                return result
-                
-        except HTTPException:
-            raise
+            logger.info(f"Executing {operation_name}", 
+                       user_id=user.get('id') if user else None,
+                       endpoint=endpoint_info['path'])
+            
+            # Get method signature to determine what parameters to pass
+            sig = inspect.signature(method)
+            params = list(sig.parameters.keys())[1:]  # Skip 'self'
+            
+            # Prepare arguments based on method signature
+            args = []
+            kwargs = {}
+            
+            for param_name in params:
+                if param_name == 'request_data' and request_data is not None:
+                    args.append(request_data)
+                elif param_name == 'user' and user is not None:
+                    args.append(user)
+                elif param_name == 'request':
+                    args.append(request)
+            
+            # Execute the method
+            if inspect.iscoroutinefunction(method):
+                result = await method(agent_instance, *args, **kwargs)
+            else:
+                result = method(agent_instance, *args, **kwargs)
+            
+            # Calculate execution time
+            execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
+            
+            logger.info(f"Successfully executed {operation_name}",
+                       user_id=user.get('id') if user else None,
+                       execution_time=execution_time)
+            
+            # All agent endpoints must return ApiResponse instances
+            if not isinstance(result, ApiResponse):
+                logger.error(f"Agent endpoint {endpoint_info['path']} returned invalid type: {type(result)}. Expected ApiResponse.")
+                return agent_instance.error_response(
+                    error_message=f"Agent endpoint must return ApiResponse instance, got {type(result).__name__}",
+                    message="Internal agent error - invalid response format",
+                    execution_time=execution_time,
+                    endpoint=endpoint_info['path'],
+                    operation=operation_name,
+                    error_type="INVALID_RESPONSE_TYPE"
+                )
+            
+            # Add execution metadata if not already present
+            if result.metadata is None:
+                result.metadata = {}
+            if "execution_time" not in result.metadata:
+                result.metadata["execution_time"] = execution_time
+            
+            return result
+            
+        except HTTPException as e:
+            # Re-wrap HTTPException as ApiResponse
+            execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
+            logger.warning(f"HTTPException in {operation_name}", 
+                          status_code=e.status_code,
+                          detail=e.detail,
+                          user_id=user.get('id') if user else None)
+            
+            return agent_instance.error_response(
+                error_message=str(e.detail),
+                message=f"Agent operation failed with status {e.status_code}",
+                execution_time=execution_time,
+                endpoint=endpoint_info['path'],
+                operation=operation_name,
+                status_code=e.status_code
+            )
         except Exception as e:
+            execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.error(f"Endpoint {endpoint_info['path']} failed", 
                         exception=e, agent=agent_name,
-                        user_id=user.get('id') if user else None)
-            raise HTTPException(
-                status_code=500, 
-                detail=f"Agent operation failed: {str(e)}"
+                        user_id=user.get('id') if user else None,
+                        execution_time=execution_time)
+            
+            return agent_instance.error_response(
+                error_message=str(e),
+                message="Agent operation failed",
+                execution_time=execution_time,
+                endpoint=endpoint_info['path'],
+                operation=operation_name,
+                error_type=type(e).__name__
             )
     
     return wrapper
 
 def register_agent_endpoints(app, agent_registry):
-    """Automatically register all agent endpoints with FastAPI"""
+    """Automatically register all agent endpoints with FastAPI using ApiResponse format"""
     
     registered_count = 0
     
@@ -281,24 +405,24 @@ def register_agent_endpoints(app, agent_registry):
             sig = inspect.signature(method)
             needs_request_data = 'request_data' in sig.parameters
             
-            # Create the final endpoint function
+            # Create the final endpoint function with ApiResponse return type
             if auth_required and needs_request_data:
-                async def final_endpoint(request_data: dict, user: dict = Depends(get_current_user)):
+                async def final_endpoint(request_data: dict, user: dict = Depends(get_current_user)) -> ApiResponse[Dict[str, Any]]:
                     return await wrapper(None, request_data, user)
             elif auth_required and not needs_request_data:
-                async def final_endpoint(user: dict = Depends(get_current_user)):
+                async def final_endpoint(user: dict = Depends(get_current_user)) -> ApiResponse[Dict[str, Any]]:
                     return await wrapper(None, None, user)
             elif not auth_required and needs_request_data:
-                async def final_endpoint(request_data: dict):
+                async def final_endpoint(request_data: dict) -> ApiResponse[Dict[str, Any]]:
                     return await wrapper(None, request_data, None)
             else:
-                async def final_endpoint():
+                async def final_endpoint() -> ApiResponse[Dict[str, Any]]:
                     return await wrapper(None, None, None)
             
             # Update the wrapper name for better error messages
             final_endpoint.__name__ = f"{agent_name}_{method.__name__}_endpoint"
             
-            # Register with FastAPI
+            # Register with FastAPI using ApiResponse response model
             for http_method in methods:
                 app.add_api_route(
                     path=path,
@@ -306,13 +430,14 @@ def register_agent_endpoints(app, agent_registry):
                     methods=[http_method.upper()],
                     tags=[f"{agent_name}-agent"],
                     summary=f"{agent_name.title()} Agent - {method.__name__.replace('_', ' ').title()}",
-                    description=method.__doc__ or f"{method.__name__} operation for {agent_name} agent"
+                    description=method.__doc__ or f"{method.__name__} operation for {agent_name} agent",
+                    response_model=ApiResponse[Dict[str, Any]]
                 )
                 registered_count += 1
             
-            logger.info(f"Registered {methods} {path} for {agent_name} agent")
+            logger.info(f"Registered {methods} {path} for {agent_name} agent with ApiResponse format")
     
-    logger.info(f"Registered {registered_count} endpoints total")
+    logger.info(f"Registered {registered_count} agent endpoints with ApiResponse format")
     return registered_count
 
 def get_all_agent_info() -> Dict[str, Any]:

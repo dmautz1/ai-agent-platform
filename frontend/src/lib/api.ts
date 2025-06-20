@@ -1,7 +1,8 @@
 import axios, { type AxiosInstance, type AxiosResponse, AxiosError } from 'axios';
+import { useState, useCallback } from 'react';
 import type {
   // Base API types
-  BaseApiResponse,
+  ApiResponse,
   ApiError,
   
   // Job response types
@@ -18,6 +19,10 @@ import type {
   // Agent response types
   AgentListResponse,
   AgentDetailResponse,
+  AgentSchemaResponse,
+  
+  // Agent result types
+  AgentSchemaResult,
   
   // System response types
   HealthResponse,
@@ -44,7 +49,6 @@ import type {
   
   // Agent types
   AgentInfo,
-  AgentSchemaResponse,
   
   // System types
   HealthCheck,
@@ -52,6 +56,17 @@ import type {
   
   // Utility types
 } from './types';
+
+// Utility function to extract result from ApiResponse
+export function extractApiResult<T>(response: ApiResponse<T>): T {
+  if (!response.success) {
+    throw new Error(response.error || 'API request failed');
+  }
+  if (response.result === null || response.result === undefined) {
+    throw new Error('API response missing result data');
+  }
+  return response.result;
+}
 
 // Create axios instance with base configuration
 const apiClient: AxiosInstance = axios.create({
@@ -82,19 +97,22 @@ apiClient.interceptors.request.use(
 // Response interceptor for error handling and logging
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
-    return response;
-  },
-  (error: AxiosError) => {
-    // Handle different error types
-    if (error.response) {
-      // Server responded with error status
-      const status = error.response.status;
-      const data = error.response.data as { message?: string; detail?: string; errors?: Record<string, string[]> };
-
-      console.error(`API Error ${status}:`, data);
-
+    // Check if response contains ApiResponse with success=false
+    const data = response.data;
+    if (data && typeof data === 'object' && 'success' in data && !data.success) {
+      // This is an ApiResponse with an error
+      const apiResponseData = data as ApiResponse<unknown>;
+      const apiError: ApiError = {
+        status: response.status,
+        message: apiResponseData.error || apiResponseData.message || 'API request failed',
+        data: apiResponseData,
+        errors: apiResponseData.metadata?.validation_errors as Record<string, string[]> || undefined,
+      };
+      
+      console.error(`API Error ${response.status}:`, apiResponseData);
+      
       // Handle specific status codes
-      switch (status) {
+      switch (response.status) {
         case 401:
           // Unauthorized - clear auth token and redirect to login
           localStorage.removeItem('auth_token');
@@ -113,18 +131,93 @@ apiClient.interceptors.response.use(
           console.error('Internal server error');
           break;
         default:
-          console.error('Unexpected error:', data);
+          console.error('Unexpected error:', apiResponseData);
       }
-
-      // Return standardized error response
-      const apiError: ApiError = {
-        status,
-        message: data?.message || data?.detail || 'An error occurred',
-        data: data,
-        errors: data?.errors,
-      };
       
       return Promise.reject(apiError);
+    }
+    
+    return response;
+  },
+  (error: AxiosError) => {
+    // Handle different error types
+    if (error.response) {
+      // Server responded with error status
+      const status = error.response.status;
+      const data = error.response.data;
+
+      console.error(`API Error ${status}:`, data);
+
+      // Check if the error response is in ApiResponse format
+      if (data && typeof data === 'object' && 'success' in data && !data.success) {
+        // ApiResponse error format
+        const apiResponseData = data as ApiResponse<unknown>;
+        const apiError: ApiError = {
+          status,
+          message: apiResponseData.error || apiResponseData.message || 'API request failed',
+          data: apiResponseData,
+          errors: apiResponseData.metadata?.validation_errors as Record<string, string[]> || undefined,
+        };
+        
+        // Handle specific status codes
+        switch (status) {
+          case 401:
+            localStorage.removeItem('auth_token');
+            window.location.href = '/auth';
+            break;
+          case 403:
+            console.error('Access forbidden');
+            break;
+          case 404:
+            console.error('Resource not found');
+            break;
+          case 422:
+            console.error('Validation error');
+            break;
+          case 500:
+            console.error('Internal server error');
+            break;
+          default:
+            console.error('Unexpected error:', apiResponseData);
+        }
+        
+        return Promise.reject(apiError);
+      } else {
+        // Legacy error format (for backward compatibility)
+        const legacyData = data as { message?: string; detail?: string; errors?: Record<string, string[]> };
+        
+        // Handle specific status codes
+        switch (status) {
+          case 401:
+            localStorage.removeItem('auth_token');
+            window.location.href = '/auth';
+            break;
+          case 403:
+            console.error('Access forbidden');
+            break;
+          case 404:
+            console.error('Resource not found');
+            break;
+          case 422:
+            console.error('Validation error');
+            break;
+          case 500:
+            console.error('Internal server error');
+            break;
+          default:
+            console.error('Unexpected error:', legacyData);
+        }
+
+        // Return standardized error response
+        const apiError: ApiError = {
+          status,
+          message: legacyData?.message || legacyData?.detail || 'An error occurred',
+          data: legacyData,
+          errors: legacyData?.errors,
+        };
+        
+        return Promise.reject(apiError);
+      }
     } else if (error.request) {
       // Network error
       console.error('Network error:', error.request);
@@ -166,8 +259,22 @@ export const api = {
         }, {} as Record<string, string>)
       ) : undefined;
       
+      // Use limit=10 by default to prevent large response issues
+      if (!params?.has('limit')) {
+        if (!params) {
+          const newParams = new URLSearchParams();
+          newParams.set('limit', '10');
+          const response = await apiClient.get<JobListResponse>('/jobs/list', { params: newParams });
+          const result = extractApiResult(response.data);
+          return result.jobs || [];
+        } else {
+          params.set('limit', '10');
+        }
+      }
+      
       const response = await apiClient.get<JobListResponse>('/jobs/list', { params });
-      return response.data.jobs || [];
+      const result = extractApiResult(response.data);
+      return result.jobs || [];
     },
 
     // Get paginated jobs list
@@ -186,37 +293,41 @@ export const api = {
       ) : undefined;
       
       const response = await apiClient.get<JobListResponse>('/jobs/list', { params });
+      const result = extractApiResult(response.data);
       return { 
-        jobs: response.data.jobs || [], 
-        total_count: response.data.total_count || 0 
+        jobs: result.jobs || [], 
+        total_count: result.total_count || 0 
       };
     },
 
     // Get job by ID
     getById: async (id: string): Promise<Job> => {
       const response = await apiClient.get<JobDetailResponse>(`/jobs/${id}`);
-      if (!response.data.job) {
+      const result = extractApiResult(response.data);
+      if (!result.job) {
         throw new Error('Job not found');
       }
-      return response.data.job;
+      return result.job;
     },
 
     // Create new job
     create: async (jobData: CreateJobRequest): Promise<{ job_id: string }> => {
       const response = await apiClient.post<CreateJobResponse>('/jobs/create', jobData);
-      if (!response.data.job_id) {
+      const result = extractApiResult(response.data);
+      if (!result.job_id) {
         throw new Error('Failed to create job');
       }
-      return { job_id: response.data.job_id };
+      return { job_id: result.job_id };
     },
 
     // Update job
     update: async (id: string, updates: Partial<Job>): Promise<Job> => {
       const response = await apiClient.patch<JobDetailResponse>(`/jobs/${id}`, updates);
-      if (!response.data.job) {
+      const result = extractApiResult(response.data);
+      if (!result.job) {
         throw new Error('Failed to update job');
       }
-      return response.data.job;
+      return result.job;
     },
 
     // Delete job
@@ -227,62 +338,78 @@ export const api = {
     // Cancel job
     cancel: async (id: string): Promise<Job> => {
       const response = await apiClient.post<JobDetailResponse>(`/jobs/${id}/cancel`);
-      if (!response.data.job) {
+      const result = extractApiResult(response.data);
+      if (!result.job) {
         throw new Error('Failed to cancel job');
       }
-      return response.data.job;
+      return result.job;
     },
 
     // Get job status
     getStatus: async (id: string): Promise<JobStatus> => {
       const response = await apiClient.get<JobStatusResponse>(`/jobs/${id}/status`);
-      return response.data.status || 'pending';
+      const result = extractApiResult(response.data);
+      return result.status || 'pending';
     },
 
     // Get multiple job statuses (batch operation)
     getBatchStatus: async (ids: string[]): Promise<Record<string, JobStatusUpdate>> => {
       const request: BatchStatusRequest = { job_ids: ids };
       const response = await apiClient.post<BatchStatusResponse>('/jobs/batch/status', request);
-      return response.data.statuses || {};
+      const result = extractApiResult(response.data);
+      return result.statuses || {};
     },
 
     // Get jobs with minimal data for polling (lighter weight)
-    getAllMinimal: async (): Promise<JobMinimal[]> => {
-      const response = await apiClient.get<JobsMinimalResponse>('/jobs/minimal');
-      return response.data.jobs || [];
+    getAllMinimal: async (query?: { limit?: number; offset?: number }): Promise<JobMinimal[]> => {
+      const params = query ? new URLSearchParams(
+        Object.entries(query).reduce((acc, [key, value]) => {
+          if (value !== undefined && value !== null) {
+            acc[key] = String(value);
+          }
+          return acc;
+        }, {} as Record<string, string>)
+      ) : undefined;
+      
+      const response = await apiClient.get<JobsMinimalResponse>('/jobs/minimal', { params });
+      const result = extractApiResult(response.data);
+      return result.jobs || [];
     },
 
     // Retry failed job
     retry: async (id: string): Promise<{ job_id: string; status: string }> => {
       const response = await apiClient.post<JobRetryResponse>(`/jobs/${id}/retry`);
-      if (!response.data.job_id) {
+      const result = extractApiResult(response.data);
+      if (!result.job_id) {
         throw new Error('Failed to retry job');
       }
       return {
-        job_id: response.data.job_id,
-        status: response.data.new_status
+        job_id: result.job_id,
+        status: result.new_status
       };
     },
 
     // Rerun any job (creates new job with same config)
     rerun: async (id: string): Promise<{ original_job_id: string; new_job_id: string; new_job: Job }> => {
       const response = await apiClient.post<JobRerunResponse>(`/jobs/${id}/rerun`);
+      const result = extractApiResult(response.data);
       
-      if (!response.data.new_job_id) {
+      if (!result.new_job_id) {
         throw new Error('Failed to rerun job');
       }
       
       return {
-        original_job_id: response.data.original_job_id,
-        new_job_id: response.data.new_job_id,
-        new_job: response.data.new_job
+        original_job_id: result.original_job_id,
+        new_job_id: result.new_job_id,
+        new_job: result.new_job
       };
     },
 
     // Get job logs
     getLogs: async (id: string): Promise<string[]> => {
       const response = await apiClient.get<JobLogsResponse>(`/jobs/${id}/logs`);
-      return response.data.logs || [];
+      const result = extractApiResult(response.data);
+      return result.logs || [];
     },
   },
 
@@ -291,38 +418,37 @@ export const api = {
     // Get all agents from discovery system
     getAll: async (): Promise<AgentInfo[]> => {
       const response = await apiClient.get<AgentListResponse>('/agents');
-      return response.data.agents || [];
+      const result = extractApiResult(response.data);
+      return result.agents || [];
     },
 
     // Get detailed agent information by identifier
     getById: async (agentId: string): Promise<AgentInfo> => {
       const response = await apiClient.get<AgentDetailResponse>(`/agents/${agentId}`);
-      if (!response.data) {
-        throw new Error(`Agent ${agentId} not found`);
-      }
-      return response.data;
+      const result = extractApiResult(response.data);
+      return result;
     },
 
     // Get agent schema for dynamic form generation
-    getSchema: async (agentId: string): Promise<AgentSchemaResponse> => {
+    getSchema: async (agentId: string): Promise<AgentSchemaResult> => {
       const response = await apiClient.get<AgentSchemaResponse>(`/agents/${agentId}/schema`);
-      if (!response.data) {
-        throw new Error(`Schema not found for agent ${agentId}`);
-      }
-      return response.data;
+      const result = extractApiResult(response.data);
+      return result;
     },
 
     // Get agent configuration
     getConfig: async (agentId: string): Promise<Record<string, unknown>> => {
-      const response = await apiClient.get<BaseApiResponse & { config: Record<string, unknown> }>(`/agents/${agentId}/config`);
-      return response.data.config || {};
+      const response = await apiClient.get<ApiResponse<{ config: Record<string, unknown> }>>(`/agents/${agentId}/config`);
+      const result = extractApiResult(response.data);
+      return result.config || {};
     },
 
     // Test agent connectivity
     test: async (agentId: string): Promise<boolean> => {
       try {
-        const response = await apiClient.post<BaseApiResponse & { test_result: boolean }>(`/agents/${agentId}/test`);
-        return response.data.test_result || false;
+        const response = await apiClient.post<ApiResponse<{ test_result: boolean }>>(`/agents/${agentId}/test`);
+        const result = extractApiResult(response.data);
+        return result.test_result || false;
       } catch {
         return false;
       }
@@ -332,12 +458,13 @@ export const api = {
   // Authentication
   auth: {
     // Login
-    login: async (credentials: LoginRequest): Promise<LoginResponse> => {
+    login: async (credentials: LoginRequest): Promise<{ user: User; tokens: AuthTokens }> => {
       const response = await apiClient.post<LoginResponse>('/auth/login', credentials);
-      if (!response.data.user) {
+      const result = extractApiResult(response.data);
+      if (!result.user) {
         throw new Error('Login failed');
       }
-      return response.data;
+      return result;
     },
 
     // Logout
@@ -349,23 +476,25 @@ export const api = {
     // Get current user
     getCurrentUser: async (): Promise<User> => {
       const response = await apiClient.get<AuthUserResponse>('/auth/me');
-      if (!response.data.user) {
+      const result = extractApiResult(response.data);
+      if (!result.user) {
         throw new Error('Failed to get user data');
       }
-      return response.data.user;
+      return result.user;
     },
 
     // Refresh auth token
     refreshToken: async (refreshToken: string): Promise<AuthTokens> => {
       const response = await apiClient.post<AuthTokenResponse>('/auth/refresh', { refresh_token: refreshToken });
-      if (!response.data.access_token) {
+      const result = extractApiResult(response.data);
+      if (!result.access_token) {
         throw new Error('Failed to refresh token');
       }
       return {
-        access_token: response.data.access_token,
-        refresh_token: response.data.refresh_token,
-        token_type: response.data.token_type,
-        expires_in: response.data.expires_in
+        access_token: result.access_token,
+        refresh_token: result.refresh_token,
+        token_type: result.token_type,
+        expires_in: result.expires_in
       };
     },
   },
@@ -374,7 +503,8 @@ export const api = {
   health: {
     check: async (): Promise<HealthCheck> => {
       const response = await apiClient.get<HealthResponse>('/health');
-      return response.data || { 
+      const result = extractApiResult(response.data);
+      return result || { 
         status: 'unhealthy', 
         timestamp: new Date().toISOString(),
         version: 'unknown'
@@ -383,7 +513,8 @@ export const api = {
 
     getStats: async (): Promise<SystemStats> => {
       const response = await apiClient.get<SystemStatsResponse>('/stats');
-      return response.data.statistics || {
+      const result = extractApiResult(response.data);
+      return result.statistics || {
         total_jobs: 0,
         jobs_by_status: { pending: 0, running: 0, completed: 0, failed: 0, cancelled: 0 },
         jobs_by_agent_identifier: {},
@@ -398,13 +529,59 @@ export const api = {
 
 // Helper functions for error handling
 export const handleApiError = (error: unknown): string => {
-  // Handle ApiError instances
+  // Handle ApiError instances (from axios interceptor)
   if (error && typeof error === 'object' && 'status' in error) {
     const apiError = error as ApiError;
+    
+    // Check if the error data contains ApiResponse format
+    if (apiError.data && typeof apiError.data === 'object' && 'success' in apiError.data) {
+      const apiResponseData = apiError.data as ApiResponse<unknown>;
+      
+      // Extract error from ApiResponse
+      if (apiResponseData.error) {
+        return apiResponseData.error;
+      }
+      
+      // Fall back to message if no error field
+      if (apiResponseData.message) {
+        return apiResponseData.message;
+      }
+      
+      // Check for validation errors in metadata
+      if (apiResponseData.metadata?.validation_errors) {
+        const validationErrors = apiResponseData.metadata.validation_errors as Record<string, string[]>;
+        return formatValidationErrors(validationErrors);
+      }
+    }
+    
+    // Handle validation errors from ApiError
     if (apiError.status === 422 && apiError.errors) {
       return formatValidationErrors(apiError.errors);
     }
+    
+    // Fall back to ApiError message
     return apiError.message || 'An unexpected error occurred';
+  }
+  
+  // Handle direct ApiResponse error objects (in case they're passed directly)
+  if (error && typeof error === 'object' && 'success' in error && !(error as ApiResponse<unknown>).success) {
+    const apiResponse = error as ApiResponse<unknown>;
+    
+    if (apiResponse.error) {
+      return apiResponse.error;
+    }
+    
+    if (apiResponse.message) {
+      return apiResponse.message;
+    }
+    
+    // Check for validation errors in metadata
+    if (apiResponse.metadata?.validation_errors) {
+      const validationErrors = apiResponse.metadata.validation_errors as Record<string, string[]>;
+      return formatValidationErrors(validationErrors);
+    }
+    
+    return 'API request failed';
   }
   
   // Handle Error instances
@@ -446,6 +623,139 @@ export const clearAuthToken = (): void => {
 // Helper function to check if user is authenticated
 export const isAuthenticated = (): boolean => {
   return !!localStorage.getItem('auth_token');
+};
+
+// Utility functions for ApiResponse parsing and error handling
+
+/**
+ * Check if an ApiResponse indicates success
+ * @param response - The ApiResponse to check
+ * @returns true if the response indicates success
+ */
+export const isApiSuccess = <T>(response: ApiResponse<T>): boolean => {
+  return response.success === true;
+};
+
+/**
+ * Extract error message from an ApiResponse
+ * @param response - The ApiResponse to extract error from
+ * @returns The error message or a default message
+ */
+export const getApiError = (response: ApiResponse<unknown>): string => {
+  if (response.success) {
+    return '';
+  }
+  
+  // Primary error field
+  if (response.error) {
+    return response.error;
+  }
+  
+  // Fall back to message
+  if (response.message) {
+    return response.message;
+  }
+  
+  // Check for validation errors in metadata
+  if (response.metadata?.validation_errors) {
+    const validationErrors = response.metadata.validation_errors as Record<string, string[]>;
+    return formatValidationErrors(validationErrors);
+  }
+  
+  return 'An error occurred';
+};
+
+/**
+ * Handle an ApiResponse, returning the result on success or null on error
+ * @param response - The ApiResponse to handle
+ * @returns The result data on success, null on error
+ */
+export const handleApiResponse = <T>(response: ApiResponse<T>): T | null => {
+  if (isApiSuccess(response) && response.result !== null && response.result !== undefined) {
+    return response.result;
+  }
+  return null;
+};
+
+/**
+ * Extract result from ApiResponse with error handling
+ * @param response - The ApiResponse to extract from
+ * @returns The result data
+ * @throws Error if the response indicates failure or missing result
+ */
+export const extractApiResultSafe = <T>(response: ApiResponse<T>): T => {
+  if (!isApiSuccess(response)) {
+    throw new Error(getApiError(response));
+  }
+  
+  if (response.result === null || response.result === undefined) {
+    throw new Error('API response missing result data');
+  }
+  
+  return response.result;
+};
+
+// React hook for ApiResponse handling
+
+/**
+ * Custom React hook for handling ApiResponse patterns
+ * @returns Object with state and handlers for ApiResponse operations
+ */
+export const useApiResponse = <T>() => {
+  const [data, setData] = useState<T | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Execute an API call that returns ApiResponse<T>
+   * @param apiCall - Function that returns a Promise<ApiResponse<T>>
+   * @returns Promise that resolves to the result data or null on error
+   */
+  const execute = useCallback(async (apiCall: () => Promise<ApiResponse<T>>): Promise<T | null> => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await apiCall();
+      
+      if (isApiSuccess(response)) {
+        const result = response.result;
+        setData(result);
+        return result;
+      } else {
+        const errorMessage = getApiError(response);
+        setError(errorMessage);
+        setData(null);
+        return null;
+      }
+    } catch (err) {
+      const errorMessage = handleApiError(err);
+      setError(errorMessage);
+      setData(null);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /**
+   * Reset the hook state
+   */
+  const reset = useCallback(() => {
+    setData(null);
+    setError(null);
+    setLoading(false);
+  }, []);
+
+  return {
+    data,
+    loading,
+    error,
+    execute,
+    reset,
+    isSuccess: data !== null && error === null,
+    hasError: error !== null,
+  };
 };
 
 // Export types for use in components

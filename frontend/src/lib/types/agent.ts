@@ -55,7 +55,7 @@ export interface FormFieldSchema {
   anyOf?: Array<{ type: string; maxLength?: number; [key: string]: unknown }>;
 }
 
-export interface AgentSchemaResponse {
+export interface AgentSchemaLegacy {
   status: string;
   message?: string;
   agent_found: boolean;

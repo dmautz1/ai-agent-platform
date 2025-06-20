@@ -26,7 +26,8 @@ class PromptJobData(BaseModel):
     )
     provider: Optional[str] = Field(
         default=None,
-        description="LLM provider to use (e.g., 'google', 'openai', 'anthropic'). If not specified, the default provider will be used."
+        description="LLM provider to use (e.g., 'google', 'openai', 'anthropic'). If not specified, the default provider will be used.",
+        json_schema_extra={"form_field_type": "llm_provider"}
     )
     model: Optional[str] = Field(
         default=None,
@@ -109,9 +110,17 @@ class SimplePromptAgent(SelfContainedAgent):
             )
 
     @endpoint("/simple-prompt/process", methods=["POST"], auth_required=True)
-    async def process_prompt(self, request_data: dict, user: dict) -> dict:
+    async def process_prompt(self, request_data: dict, user: dict):
         """Process a text prompt using any available LLM provider"""
-        job_data = validate_job_data(request_data, PromptJobData)
+        try:
+            job_data = validate_job_data(request_data, PromptJobData)
+        except Exception as e:
+            # Handle validation errors with proper ApiResponse format
+            return self.error_response(
+                error_message=f"Validation failed: {str(e)}",
+                message="Invalid request data",
+                endpoint="/simple-prompt/process"
+            )
         
         try:
             # Use custom system instruction if provided, otherwise use default
@@ -133,56 +142,122 @@ class SimplePromptAgent(SelfContainedAgent):
             # Include provider info in response
             provider_used = provider or self.llm_service._default_provider
             
-            return {
-                "status": "success",
-                "result": result,
-                "result_format": self.result_format,
-                "metadata": {
-                    "provider": provider_used,
-                    "model": model,
-                    "temperature": job_data.temperature
-                }
-            }
+            return self.success_response(
+                result={
+                    "response": result,
+                    "result_format": self.result_format,
+                    "metadata": {
+                        "provider": provider_used,
+                        "model": model,
+                        "temperature": job_data.temperature
+                    }
+                },
+                message="Prompt processed successfully",
+                endpoint="/simple-prompt/process",
+                provider=provider_used,
+                model=model
+            )
             
         except Exception as e:
             logger.error(f"Failed to process prompt: {e}")
-            return {
-                "status": "error",
-                "error": f"Failed to process prompt: {str(e)}"
-            }
+            return self.error_response(
+                error_message=f"Failed to process prompt: {str(e)}",
+                message="Prompt processing failed",
+                endpoint="/simple-prompt/process"
+            )
 
     @endpoint("/simple-prompt/info", methods=["GET"], auth_required=False)
-    async def get_agent_info(self) -> dict:
+    async def get_agent_info(self):
         """Get basic agent information including available providers"""
-        available_providers = self.llm_service.get_available_providers()
-        
-        return {
-            "name": self.name,
-            "description": self.description,
-            "status": "available",
-            "available_providers": available_providers,
-            "default_provider": self.llm_service._default_provider,
-            "supported_parameters": {
-                "prompt": "Text prompt to send to LLM (required)",
-                "provider": f"LLM provider to use. Options: {', '.join(available_providers)}",
-                "model": "Specific model to use (provider-specific, optional)",
-                "temperature": "Temperature for response generation (0.0-1.0, default: 0.7)",
-                "system_instruction": "Custom system instruction (optional)",
-                "max_tokens": "Maximum tokens to generate (optional)"
+        try:
+            available_providers = self.llm_service.get_available_providers()
+            
+            agent_info = {
+                "name": self.name,
+                "description": self.description,
+                "status": "available",
+                "available_providers": available_providers,
+                "default_provider": self.llm_service._default_provider,
+                "supported_parameters": {
+                    "prompt": "Text prompt to send to LLM (required)",
+                    "provider": f"LLM provider to use. Options: {', '.join(available_providers)}",
+                    "model": "Specific model to use (provider-specific, optional)",
+                    "temperature": "Temperature for response generation (0.0-1.0, default: 0.7)",
+                    "system_instruction": "Custom system instruction (optional)",
+                    "max_tokens": "Maximum tokens to generate (optional)"
+                }
             }
-        }
+            
+            return self.success_response(
+                result=agent_info,
+                message="Agent information retrieved successfully",
+                endpoint="/simple-prompt/info"
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to get agent info: {e}")
+            return self.error_response(
+                error_message=f"Failed to get agent info: {str(e)}",
+                message="Agent info retrieval failed",
+                endpoint="/simple-prompt/info"
+            )
 
     @endpoint("/simple-prompt/providers", methods=["GET"], auth_required=False)
-    async def get_providers_info(self) -> dict:
+    async def get_providers_info(self):
         """Get detailed information about all available LLM providers"""
-        return self.llm_service.get_all_providers_info()
+        try:
+            providers_info = self.llm_service.get_all_providers_info()
+            
+            return self.success_response(
+                result=providers_info,
+                message="Providers information retrieved successfully",
+                endpoint="/simple-prompt/providers"
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to get providers info: {e}")
+            return self.error_response(
+                error_message=f"Failed to get providers info: {str(e)}",
+                message="Providers info retrieval failed",
+                endpoint="/simple-prompt/providers"
+            )
 
     @endpoint("/simple-prompt/health", methods=["GET"], auth_required=False)
-    async def get_health_status(self) -> dict:
+    async def get_health_status(self):
         """Get health status of all LLM providers"""
-        return self.llm_service.get_connection_health_status()
+        try:
+            health_status = self.llm_service.get_connection_health_status()
+            
+            return self.success_response(
+                result=health_status,
+                message="Health status retrieved successfully",
+                endpoint="/simple-prompt/health"
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to get health status: {e}")
+            return self.error_response(
+                error_message=f"Failed to get health status: {str(e)}",
+                message="Health status retrieval failed",
+                endpoint="/simple-prompt/health"
+            )
 
     @endpoint("/simple-prompt/test-connections", methods=["GET"], auth_required=True)
-    async def test_all_connections(self) -> dict:
+    async def test_all_connections(self):
         """Test connections to all available LLM providers"""
-        return self.llm_service.test_all_connections() 
+        try:
+            connection_tests = self.llm_service.test_all_connections()
+            
+            return self.success_response(
+                result=connection_tests,
+                message="Connection tests completed successfully",
+                endpoint="/simple-prompt/test-connections"
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to test connections: {e}")
+            return self.error_response(
+                error_message=f"Failed to test connections: {str(e)}",
+                message="Connection tests failed",
+                endpoint="/simple-prompt/test-connections"
+            ) 

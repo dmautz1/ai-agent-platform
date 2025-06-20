@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { api, type Job } from './api';
+import { api, type Job, type JobMinimal } from './api';
 
 export interface PollingOptions {
   /** Base polling interval in milliseconds (default: 5000) */
@@ -44,6 +44,27 @@ const getPollingInterval = (jobs: Pick<Job, 'status'>[], baseInterval: number): 
   const hasActiveJobs = jobs.some(job => job.status === 'running' || job.status === 'pending');
   return hasActiveJobs ? baseInterval : baseInterval * 2;
 };
+
+// Helper function to convert JobMinimal to Job for dashboard compatibility
+const convertMinimalToJob = (minimal: JobMinimal): Job => ({
+  ...minimal,
+  user_id: '', // Will be filled by the current user context
+  priority: 5, // Default priority
+  data: { 
+    agent_identifier: minimal.agent_identifier,
+    title: minimal.title 
+  },
+  // Optional fields that aren't in minimal response
+  result: undefined,
+  result_format: undefined,
+  error_message: undefined,
+  started_at: undefined,
+  completed_at: undefined,
+  tags: undefined,
+  metadata: undefined,
+  progress: undefined,
+  execution_time_ms: undefined,
+});
 
 /**
  * Simplified job polling hook using single useEffect pattern
@@ -117,7 +138,8 @@ export const useJobPolling = (
         setState(prev => ({ ...prev, isPolling: true, error: null }));
 
         try {
-          const jobs = await api.jobs.getAll();
+          const minimalJobs = await api.jobs.getAllMinimal({ limit: 50 });
+          const jobs = minimalJobs.map(convertMinimalToJob);
           
           if (!mountedRef.current || !isActive) {
             return;
@@ -209,7 +231,8 @@ export const useJobPolling = (
 
       setState(prev => ({ ...prev, isPolling: true, error: null }));
 
-      const jobs = await api.jobs.getAll();
+      const minimalJobs = await api.jobs.getAllMinimal({ limit: 50 });
+      const jobs = minimalJobs.map(convertMinimalToJob);
       
       if (!mountedRef.current) {
         return;

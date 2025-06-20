@@ -5,22 +5,36 @@ Handles:
 - Job retry operations
 - Job rerun functionality  
 - Job cancellation/termination
+- Job priority updates
 """
 
 from fastapi import APIRouter, HTTPException, Depends
-from typing import Dict, Any
+from typing import Dict, Any, Union
 from datetime import datetime, timezone
 
 from auth import get_current_user
 from database import get_database_operations
 from job_pipeline import get_job_pipeline
+from models import ApiResponse
 from logging_system import get_logger
+from utils.responses import (
+    create_success_response,
+    create_error_response,
+    api_response_validator
+)
 
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["job-operations"])
 
-@router.post("/{job_id}/retry")
+# Job Operations Response Types
+JobRetryResponse = Dict[str, Union[str, bool]]
+JobRerunResponse = Dict[str, Union[str, Dict[str, Any]]]
+JobCancelResponse = Dict[str, str]
+JobPriorityResponse = Dict[str, Union[str, int]]
+
+@router.post("/{job_id}/retry", response_model=ApiResponse[JobRetryResponse])
+@api_response_validator(result_type=JobRetryResponse)
 async def retry_job(
     job_id: str,
     user: Dict[str, Any] = Depends(get_current_user)
@@ -37,21 +51,29 @@ async def retry_job(
         # Get the original job
         original_job = await db_ops.get_job(job_id, user_id=user["id"])
         if not original_job:
-            raise HTTPException(
-                status_code=404,
-                detail="Job not found or access denied"
+            return create_error_response(
+                error_message="Job not found or access denied",
+                message="Job not found",
+                metadata={
+                    "error_code": "JOB_NOT_FOUND",
+                    "job_id": job_id,
+                    "user_id": user["id"],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
             )
         
         # Check if job can be retried
         if original_job["status"] != "failed":
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "message": f"Cannot retry job with status '{original_job['status']}'",
+            return create_error_response(
+                error_message=f"Cannot retry job with status '{original_job['status']}'",
+                message="Invalid job status for retry",
+                metadata={
                     "error_code": "INVALID_STATUS",
                     "allowed_statuses": ["failed"],
                     "current_status": original_job["status"],
                     "suggestion": "Only failed jobs can be retried",
+                    "job_id": job_id,
+                    "user_id": user["id"],
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
@@ -70,13 +92,39 @@ async def retry_job(
         new_job = await db_ops.create_job(retry_job_data)
         
         if not new_job:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to create retry job"
+            return create_error_response(
+                error_message="Failed to create retry job",
+                message="Job retry creation failed",
+                metadata={
+                    "error_code": "RETRY_CREATION_FAILED",
+                    "job_id": job_id,
+                    "user_id": user["id"],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
             )
         
-        # Note: We skip updating original job metadata since update_job_metadata doesn't exist
-        # This is acceptable as the retry relationship can be tracked through tags
+        # Submit the retry job to the pipeline for execution
+        pipeline_submitted = False
+        pipeline = get_job_pipeline()
+        if pipeline and pipeline.is_running:
+            try:
+                pipeline_submitted = await pipeline.submit_job(
+                    job_id=new_job["id"],
+                    user_id=user["id"],
+                    agent_name=new_job["agent_identifier"],
+                    job_data=new_job["data"],
+                    priority=new_job.get("priority", 5),
+                    tags=new_job.get("tags", [])
+                )
+                
+                if pipeline_submitted:
+                    logger.info("Retry job submitted to pipeline", job_id=new_job["id"])
+                else:
+                    logger.warning("Retry job created but failed to submit to pipeline", job_id=new_job["id"])
+            except Exception as e:
+                logger.warning("Failed to submit retry job to pipeline", exception=e, job_id=new_job["id"])
+        else:
+            logger.warning("Retry job created but pipeline not running", job_id=new_job["id"])
         
         logger.info(
             "Job retry created successfully",
@@ -85,48 +133,40 @@ async def retry_job(
             user_id=user["id"]
         )
         
-        # Submit the retry job to the pipeline for execution
-        pipeline = get_job_pipeline()
-        if pipeline and pipeline.is_running:
-            pipeline_submitted = await pipeline.submit_job(
-                job_id=new_job["id"],
-                user_id=user["id"],
-                agent_name=new_job["agent_identifier"],
-                job_data=new_job["data"],
-                priority=new_job.get("priority", 5),
-                tags=new_job.get("tags", [])
-            )
-            
-            if pipeline_submitted:
-                logger.info("Retry job submitted to pipeline", job_id=new_job["id"])
-            else:
-                logger.warning("Retry job created but failed to submit to pipeline", job_id=new_job["id"])
-        else:
-            logger.warning("Retry job created but pipeline not running", job_id=new_job["id"])
-        
-        return {
-            "success": True,
-            "message": "Retry job created successfully",
+        result_data = {
             "job_id": new_job["id"],
-            "new_status": "pending",
             "original_job_id": job_id,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "new_status": "pending",
+            "pipeline_submitted": pipeline_submitted
         }
         
-    except HTTPException:
-        raise
+        return create_success_response(
+            result=result_data,
+            message="Retry job created successfully",
+            metadata={
+                "endpoint": "retry_job",
+                "job_id": job_id,
+                "retry_job_id": new_job["id"],
+                "user_id": user["id"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
     except Exception as e:
         logger.error("Failed to retry job", exception=e, job_id=job_id, user_id=user["id"])
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "message": f"Failed to retry job: {str(e)}",
-                "error_code": "RETRY_ERROR",
+        return create_error_response(
+            error_message=str(e),
+            message="Failed to retry job",
+            metadata={
+                "error_code": "JOB_RETRY_ERROR",
+                "job_id": job_id,
+                "user_id": user["id"],
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
 
-@router.post("/{job_id}/rerun")
+@router.post("/{job_id}/rerun", response_model=ApiResponse[JobRerunResponse])
+@api_response_validator(result_type=JobRerunResponse)
 async def rerun_job(
     job_id: str,
     user: Dict[str, Any] = Depends(get_current_user)
@@ -143,22 +183,30 @@ async def rerun_job(
         # Get the original job
         original_job = await db_ops.get_job(job_id, user_id=user["id"])
         if not original_job:
-            raise HTTPException(
-                status_code=404,
-                detail="Job not found or access denied"
+            return create_error_response(
+                error_message="Job not found or access denied",
+                message="Job not found",
+                metadata={
+                    "error_code": "JOB_NOT_FOUND",
+                    "job_id": job_id,
+                    "user_id": user["id"],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
             )
         
         # Check if job can be rerun
         allowed_statuses = ["completed", "failed", "cancelled"]
         if original_job["status"] not in allowed_statuses:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "message": f"Cannot rerun job with status '{original_job['status']}'",
+            return create_error_response(
+                error_message=f"Cannot rerun job with status '{original_job['status']}'",
+                message="Invalid job status for rerun",
+                metadata={
                     "error_code": "INVALID_STATUS",
                     "allowed_statuses": allowed_statuses,
                     "current_status": original_job["status"],
                     "suggestion": "Jobs can only be rerun after completion, failure, or cancellation",
+                    "job_id": job_id,
+                    "user_id": user["id"],
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
@@ -177,13 +225,39 @@ async def rerun_job(
         new_job = await db_ops.create_job(rerun_job_data)
         
         if not new_job:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to create rerun job"
+            return create_error_response(
+                error_message="Failed to create rerun job",
+                message="Job rerun creation failed",
+                metadata={
+                    "error_code": "RERUN_CREATION_FAILED",
+                    "job_id": job_id,
+                    "user_id": user["id"],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
             )
         
-        # Note: We skip updating original job metadata since update_job_metadata doesn't exist
-        # This is acceptable as the rerun relationship can be tracked through tags
+        # Submit the rerun job to the pipeline for execution
+        pipeline_submitted = False
+        pipeline = get_job_pipeline()
+        if pipeline and pipeline.is_running:
+            try:
+                pipeline_submitted = await pipeline.submit_job(
+                    job_id=new_job["id"],
+                    user_id=user["id"],
+                    agent_name=new_job["agent_identifier"],
+                    job_data=new_job["data"],
+                    priority=new_job.get("priority", 5),
+                    tags=new_job.get("tags", [])
+                )
+                
+                if pipeline_submitted:
+                    logger.info("Rerun job submitted to pipeline", job_id=new_job["id"])
+                else:
+                    logger.warning("Rerun job created but failed to submit to pipeline", job_id=new_job["id"])
+            except Exception as e:
+                logger.warning("Failed to submit rerun job to pipeline", exception=e, job_id=new_job["id"])
+        else:
+            logger.warning("Rerun job created but pipeline not running", job_id=new_job["id"])
         
         logger.info(
             "Job rerun created successfully",
@@ -192,48 +266,40 @@ async def rerun_job(
             user_id=user["id"]
         )
         
-        # Submit the rerun job to the pipeline for execution
-        pipeline = get_job_pipeline()
-        if pipeline and pipeline.is_running:
-            pipeline_submitted = await pipeline.submit_job(
-                job_id=new_job["id"],
-                user_id=user["id"],
-                agent_name=new_job["agent_identifier"],
-                job_data=new_job["data"],
-                priority=new_job.get("priority", 5),
-                tags=new_job.get("tags", [])
-            )
-            
-            if pipeline_submitted:
-                logger.info("Rerun job submitted to pipeline", job_id=new_job["id"])
-            else:
-                logger.warning("Rerun job created but failed to submit to pipeline", job_id=new_job["id"])
-        else:
-            logger.warning("Rerun job created but pipeline not running", job_id=new_job["id"])
-        
-        return {
-            "success": True,
-            "message": "Rerun job created successfully",
+        result_data = {
             "original_job_id": job_id,
             "new_job_id": new_job["id"],
             "new_job": new_job,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "pipeline_submitted": pipeline_submitted
         }
         
-    except HTTPException:
-        raise
+        return create_success_response(
+            result=result_data,
+            message="Rerun job created successfully",
+            metadata={
+                "endpoint": "rerun_job",
+                "job_id": job_id,
+                "rerun_job_id": new_job["id"],
+                "user_id": user["id"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
     except Exception as e:
         logger.error("Failed to rerun job", exception=e, job_id=job_id, user_id=user["id"])
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "message": f"Failed to rerun job: {str(e)}",
-                "error_code": "RERUN_ERROR",
+        return create_error_response(
+            error_message=str(e),
+            message="Failed to rerun job",
+            metadata={
+                "error_code": "JOB_RERUN_ERROR",
+                "job_id": job_id,
+                "user_id": user["id"],
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
 
-@router.post("/{job_id}/cancel")
+@router.post("/{job_id}/cancel", response_model=ApiResponse[JobCancelResponse])
+@api_response_validator(result_type=JobCancelResponse)
 async def cancel_job(
     job_id: str,
     user: Dict[str, Any] = Depends(get_current_user)
@@ -250,22 +316,30 @@ async def cancel_job(
         # Get the job
         job = await db_ops.get_job(job_id, user_id=user["id"])
         if not job:
-            raise HTTPException(
-                status_code=404,
-                detail="Job not found or access denied"
+            return create_error_response(
+                error_message="Job not found or access denied",
+                message="Job not found",
+                metadata={
+                    "error_code": "JOB_NOT_FOUND",
+                    "job_id": job_id,
+                    "user_id": user["id"],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
             )
         
         # Check if job can be cancelled
         allowed_statuses = ["pending", "running"]
         if job["status"] not in allowed_statuses:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "message": f"Cannot cancel job with status '{job['status']}'",
+            return create_error_response(
+                error_message=f"Cannot cancel job with status '{job['status']}'",
+                message="Invalid job status for cancellation",
+                metadata={
                     "error_code": "INVALID_STATUS",
                     "allowed_statuses": allowed_statuses,
                     "current_status": job["status"],
                     "suggestion": "Only pending or running jobs can be cancelled",
+                    "job_id": job_id,
+                    "user_id": user["id"],
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
@@ -297,29 +371,38 @@ async def cancel_job(
             previous_status=job["status"]
         )
         
-        return {
-            "success": True,
-            "message": "Job cancelled successfully",
+        result_data = {
             "job_id": job_id,
             "previous_status": job["status"],
-            "new_status": "cancelled",
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "new_status": "cancelled"
         }
         
-    except HTTPException:
-        raise
+        return create_success_response(
+            result=result_data,
+            message="Job cancelled successfully",
+            metadata={
+                "endpoint": "cancel_job",
+                "job_id": job_id,
+                "user_id": user["id"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
     except Exception as e:
         logger.error("Failed to cancel job", exception=e, job_id=job_id, user_id=user["id"])
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "message": f"Failed to cancel job: {str(e)}",
-                "error_code": "CANCEL_ERROR",
+        return create_error_response(
+            error_message=str(e),
+            message="Failed to cancel job",
+            metadata={
+                "error_code": "JOB_CANCEL_ERROR",
+                "job_id": job_id,
+                "user_id": user["id"],
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
 
-@router.post("/{job_id}/priority")
+@router.post("/{job_id}/priority", response_model=ApiResponse[JobPriorityResponse])
+@api_response_validator(result_type=JobPriorityResponse)
 async def update_job_priority(
     job_id: str,
     request: Dict[str, int],
@@ -332,15 +415,29 @@ async def update_job_priority(
     new_priority = request.get("priority")
     
     if new_priority is None:
-        raise HTTPException(
-            status_code=400,
-            detail="priority field is required"
+        return create_error_response(
+            error_message="priority field is required",
+            message="Missing required field",
+            metadata={
+                "error_code": "MISSING_PRIORITY",
+                "job_id": job_id,
+                "user_id": user["id"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
         )
     
     if not isinstance(new_priority, int) or not (1 <= new_priority <= 10):
-        raise HTTPException(
-            status_code=400,
-            detail="priority must be an integer between 1 and 10"
+        return create_error_response(
+            error_message="priority must be an integer between 1 and 10",
+            message="Invalid priority value",
+            metadata={
+                "error_code": "INVALID_PRIORITY",
+                "provided_priority": new_priority,
+                "valid_range": "1-10",
+                "job_id": job_id,
+                "user_id": user["id"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
         )
     
     logger.info(
@@ -356,21 +453,29 @@ async def update_job_priority(
         # Get the job
         job = await db_ops.get_job(job_id, user_id=user["id"])
         if not job:
-            raise HTTPException(
-                status_code=404,
-                detail="Job not found or access denied"
+            return create_error_response(
+                error_message="Job not found or access denied",
+                message="Job not found",
+                metadata={
+                    "error_code": "JOB_NOT_FOUND",
+                    "job_id": job_id,
+                    "user_id": user["id"],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
             )
         
         # Check if job priority can be updated
         if job["status"] != "pending":
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "message": f"Cannot update priority for job with status '{job['status']}'",
+            return create_error_response(
+                error_message=f"Cannot update priority for job with status '{job['status']}'",
+                message="Invalid job status for priority update",
+                metadata={
                     "error_code": "INVALID_STATUS",
                     "allowed_statuses": ["pending"],
                     "current_status": job["status"],
                     "suggestion": "Priority can only be updated for pending jobs",
+                    "job_id": job_id,
+                    "user_id": user["id"],
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
@@ -388,24 +493,32 @@ async def update_job_priority(
             new_priority=new_priority
         )
         
-        return {
-            "success": True,
-            "message": "Job priority updated successfully",
+        result_data = {
             "job_id": job_id,
             "old_priority": job.get("priority", 5),
-            "new_priority": new_priority,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "new_priority": new_priority
         }
         
-    except HTTPException:
-        raise
+        return create_success_response(
+            result=result_data,
+            message="Job priority updated successfully",
+            metadata={
+                "endpoint": "update_job_priority",
+                "job_id": job_id,
+                "user_id": user["id"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
     except Exception as e:
         logger.error("Failed to update job priority", exception=e, job_id=job_id, user_id=user["id"])
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "message": f"Failed to update job priority: {str(e)}",
-                "error_code": "PRIORITY_UPDATE_ERROR",
+        return create_error_response(
+            error_message=str(e),
+            message="Failed to update job priority",
+            metadata={
+                "error_code": "JOB_PRIORITY_ERROR",
+                "job_id": job_id,
+                "user_id": user["id"],
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         ) 

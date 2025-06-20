@@ -82,10 +82,10 @@ export function LLMSelector({
         for (const providerName of providerNames) {
           try {
             const response = await apiClient.get(`/${providerName}/models`);
-            if (response.data.status === 'success' && response.data.models) {
+            if (response.data.success && response.data.result && response.data.result.models) {
               // Map endpoint names to internal provider names
               const internalName = providerName === 'google-ai' ? 'google' : providerName;
-              const providerData = response.data;
+              const providerData = response.data.result;
               
               providers[internalName] = {
                 provider: internalName,

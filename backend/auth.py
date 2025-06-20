@@ -139,7 +139,15 @@ async def get_optional_user(credentials: Optional[HTTPAuthorizationCredentials] 
     
     try:
         # Verify token manually since auto_error=False
+        # Safely access credentials to avoid AttributeError
+        if not hasattr(credentials, 'credentials'):
+            logger.debug("Optional auth failed - invalid credentials object")
+            return None
+            
         token = credentials.credentials
+        if not token:
+            logger.debug("Optional auth failed - empty token")
+            return None
         
         # Get Supabase client
         supabase = get_supabase_client()
@@ -169,7 +177,13 @@ async def get_optional_user(credentials: Optional[HTTPAuthorizationCredentials] 
         return user_data
         
     except Exception as e:
-        logger.debug("Optional auth failed", error=str(e), token_prefix=credentials.credentials[:10] if credentials else "none")
+        # Safely handle token prefix to avoid AttributeError
+        try:
+            token_prefix = credentials.credentials[:10] if credentials and hasattr(credentials, 'credentials') else "none"
+        except (AttributeError, TypeError):
+            token_prefix = "invalid"
+        
+        logger.debug("Optional auth failed", error=str(e), token_prefix=token_prefix)
         return None
 
 def require_user_access(resource_user_id: str, current_user: Dict[str, Any]) -> None:

@@ -566,9 +566,16 @@ Focus on extracting meaningful information and presenting it in a structured, us
         return categories
 
     @endpoint("/web-scraping/scrape", methods=["POST"], auth_required=True)
-    async def scrape_website(self, request_data: dict, user: dict) -> dict:
+    async def scrape_website(self, request_data: dict, user: dict):
         """Scrape a website and return structured JSON analysis"""
-        job_data = validate_job_data(request_data, WebScrapingJobData)
+        try:
+            job_data = validate_job_data(request_data, WebScrapingJobData)
+        except Exception as e:
+            return self.error_response(
+                error_message=f"Validation failed: {str(e)}",
+                message="Invalid request data",
+                endpoint="/web-scraping/scrape"
+            )
         
         try:
             logger.info(f"Processing web scraping request for: {job_data.url}")
@@ -577,28 +584,37 @@ Focus on extracting meaningful information and presenting it in a structured, us
             result = await self._execute_job_logic(job_data)
             
             if result.success:
-                return {
-                    "status": "success",
-                    "data": result.result,
-                    "result_format": result.result_format,
-                    "metadata": result.metadata
-                }
+                return self.success_response(
+                    result={
+                        "data": result.result,
+                        "result_format": result.result_format,
+                        "metadata": result.metadata
+                    },
+                    message="Website scraped and analyzed successfully",
+                    endpoint="/web-scraping/scrape",
+                    url=job_data.url,
+                    content_analyzed=job_data.analyze_content
+                )
             else:
-                return {
-                    "status": "error",
-                    "error": result.error_message,
-                    "metadata": result.metadata
-                }
+                return self.error_response(
+                    error_message=result.error_message,
+                    message="Web scraping failed",
+                    endpoint="/web-scraping/scrape",
+                    url=job_data.url,
+                    metadata=result.metadata
+                )
                 
         except Exception as e:
             logger.error(f"Failed to scrape website: {e}")
-            return {
-                "status": "error",
-                "error": f"Failed to scrape website: {str(e)}"
-            }
+            return self.error_response(
+                error_message=f"Failed to scrape website: {str(e)}",
+                message="Web scraping operation failed",
+                endpoint="/web-scraping/scrape",
+                url=job_data.url if 'job_data' in locals() else "unknown"
+            )
 
     @endpoint("/web-scraping/diagnose-ai", methods=["POST"], auth_required=True)
-    async def diagnose_ai_analysis(self, request_data: dict, user: dict) -> dict:
+    async def diagnose_ai_analysis(self, request_data: dict, user: dict):
         """Diagnostic endpoint to test AI analysis functionality"""
         try:
             test_content = request_data.get("test_content", "This is a test article about artificial intelligence and machine learning technologies.")
@@ -612,19 +628,18 @@ Focus on extracting meaningful information and presenting it in a structured, us
                 service_info = self.google_ai.get_info()
                 logger.info(f"Google AI service available: {service_info}")
             except Exception as service_error:
-                return {
-                    "status": "error",
-                    "error": f"Google AI service unavailable: {str(service_error)}",
-                    "diagnostic": "google_ai_service_unavailable"
-                }
+                return self.error_response(
+                    error_message=f"Google AI service unavailable: {str(service_error)}",
+                    message="AI service diagnostic failed",
+                    endpoint="/web-scraping/diagnose-ai",
+                    diagnostic="google_ai_service_unavailable"
+                )
             
             # Test AI analysis with simple content
             try:
                 analysis_result = await self._analyze_content(test_content, summary_length, extract_keywords)
                 
                 diagnostic_info = {
-                    "status": "success",
-                    "message": "AI analysis diagnostic completed",
                     "test_content_length": len(test_content),
                     "analysis_result": analysis_result,
                     "has_error": "error" in analysis_result,
@@ -633,48 +648,73 @@ Focus on extracting meaningful information and presenting it in a structured, us
                 }
                 
                 if "error" in analysis_result:
-                    diagnostic_info["diagnostic"] = "ai_analysis_returned_error"
-                    diagnostic_info["error_details"] = analysis_result["error"]
+                    return self.error_response(
+                        error_message=analysis_result["error"],
+                        message="AI analysis returned error",
+                        endpoint="/web-scraping/diagnose-ai",
+                        diagnostic="ai_analysis_returned_error",
+                        **diagnostic_info
+                    )
                 else:
-                    diagnostic_info["diagnostic"] = "ai_analysis_successful"
-                
-                return diagnostic_info
+                    return self.success_response(
+                        result=diagnostic_info,
+                        message="AI analysis diagnostic completed successfully",
+                        endpoint="/web-scraping/diagnose-ai",
+                        diagnostic="ai_analysis_successful"
+                    )
                 
             except Exception as analysis_error:
                 logger.error(f"AI analysis diagnostic failed: {analysis_error}", exc_info=True)
-                return {
-                    "status": "error",
-                    "error": f"AI analysis failed: {str(analysis_error)}",
-                    "diagnostic": "ai_analysis_exception",
-                    "google_ai_service_info": self.google_ai.get_info() if self.google_ai else "unavailable"
-                }
+                return self.error_response(
+                    error_message=f"AI analysis failed: {str(analysis_error)}",
+                    message="AI analysis diagnostic failed",
+                    endpoint="/web-scraping/diagnose-ai",
+                    diagnostic="ai_analysis_exception",
+                    google_ai_service_info=self.google_ai.get_info() if self.google_ai else "unavailable"
+                )
                 
         except Exception as e:
             logger.error(f"AI diagnostic test failed: {e}", exc_info=True)
-            return {
-                "status": "error",
-                "error": f"Diagnostic test failed: {str(e)}",
-                "diagnostic": "diagnostic_exception"
-            }
+            return self.error_response(
+                error_message=f"Diagnostic test failed: {str(e)}",
+                message="Diagnostic operation failed",
+                endpoint="/web-scraping/diagnose-ai",
+                diagnostic="diagnostic_exception"
+            )
 
     @endpoint("/web-scraping/info", methods=["GET"], auth_required=False)
-    async def get_agent_info(self) -> dict:
+    async def get_agent_info(self):
         """Get web scraping agent information"""
-        return {
-            "name": self.name,
-            "description": self.description,
-            "result_format": self.result_format,
-            "capabilities": [
-                "Website content scraping",
-                "AI-powered content analysis",
-                "Link and image extraction",
-                "Custom CSS selector support",
-                "Structured JSON output",
-                "Content summarization",
-                "Keyword extraction"
-            ],
-            "supported_formats": ["HTML", "XHTML"],
-            "max_depth": 3,
-            "google_ai_service": self.google_ai.get_info() if self.google_ai else "unavailable",
-            "status": "available"
-        } 
+        try:
+            agent_info = {
+                "name": self.name,
+                "description": self.description,
+                "result_format": self.result_format,
+                "capabilities": [
+                    "Website content scraping",
+                    "AI-powered content analysis",
+                    "Link and image extraction",
+                    "Custom CSS selector support",
+                    "Structured JSON output",
+                    "Content summarization",
+                    "Keyword extraction"
+                ],
+                "supported_formats": ["HTML", "XHTML"],
+                "max_depth": 3,
+                "google_ai_service": self.google_ai.get_info() if self.google_ai else "unavailable",
+                "status": "available"
+            }
+            
+            return self.success_response(
+                result=agent_info,
+                message="Web scraping agent information retrieved successfully",
+                endpoint="/web-scraping/info"
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to get agent info: {e}")
+            return self.error_response(
+                error_message=f"Failed to get agent info: {str(e)}",
+                message="Agent info retrieval failed",
+                endpoint="/web-scraping/info"
+            ) 

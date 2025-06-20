@@ -7,18 +7,29 @@ Handles:
 """
 
 from fastapi import APIRouter, HTTPException, Depends, Query
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from datetime import datetime, timezone, timedelta
 
 from auth import get_current_user
 from database import get_database_operations
+from models import ApiResponse
 from logging_system import get_logger
+from utils.responses import (
+    create_success_response,
+    create_error_response,
+    api_response_validator
+)
 
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["job-monitoring"])
 
-@router.get("/{job_id}/logs")
+# Job Monitoring Response Types
+JobLogsResponse = Dict[str, Union[str, List[Dict[str, Any]], int]]
+JobAnalyticsResponse = Dict[str, Union[Dict[str, Any], Optional[Dict[str, str]]]]
+
+@router.get("/{job_id}/logs", response_model=ApiResponse[JobLogsResponse])
+@api_response_validator(result_type=JobLogsResponse)
 async def get_job_logs(
     job_id: str,
     limit: int = Query(default=100, ge=1, le=1000, description="Number of log entries to return"),
@@ -38,9 +49,15 @@ async def get_job_logs(
         # Verify job exists and user has access
         job = await db_ops.get_job(job_id, user_id=user["id"])
         if not job:
-            raise HTTPException(
-                status_code=404,
-                detail="Job not found or access denied"
+            return create_error_response(
+                error_message="Job not found or access denied",
+                message="Job not found",
+                metadata={
+                    "error_code": "JOB_NOT_FOUND",
+                    "job_id": job_id,
+                    "user_id": user["id"],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
             )
         
         # For now, return basic job information as "logs"
@@ -87,29 +104,44 @@ async def get_job_logs(
         # Apply pagination
         paginated_logs = logs[offset:offset + limit]
         
-        return {
-            "success": True,
-            "message": "Job logs retrieved successfully",
+        result_data = {
             "job_id": job_id,
             "logs": paginated_logs,
             "total_count": len(logs),
             "count": len(paginated_logs)
         }
         
-    except HTTPException:
-        raise
+        return create_success_response(
+            result=result_data,
+            message="Job logs retrieved successfully",
+            metadata={
+                "endpoint": "job_logs",
+                "job_id": job_id,
+                "user_id": user["id"],
+                "filters": {
+                    "level": level,
+                    "limit": limit,
+                    "offset": offset
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
     except Exception as e:
         logger.error("Job logs retrieval failed", exception=e, job_id=job_id, user_id=user["id"])
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "message": f"Failed to retrieve job logs: {str(e)}",
-                "error_code": "LOGS_RETRIEVAL_ERROR",
+        return create_error_response(
+            error_message=str(e),
+            message="Failed to retrieve job logs",
+            metadata={
+                "error_code": "JOB_LOGS_ERROR",
+                "job_id": job_id,
+                "user_id": user["id"],
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
 
-@router.get("/analytics/summary")
+@router.get("/analytics/summary", response_model=ApiResponse[JobAnalyticsResponse])
+@api_response_validator(result_type=JobAnalyticsResponse)
 async def get_jobs_analytics_summary(
     days: int = Query(default=7, ge=1, le=90, description="Number of days to include"),
     agent_identifier: Optional[str] = Query(default=None, description="Filter by agent"),
@@ -200,22 +232,33 @@ async def get_jobs_analytics_summary(
             }
         }
         
-        return {
-            "success": True,
-            "message": "Analytics summary retrieved successfully",
+        result_data = {
             "analytics": analytics,
             "filters": {
                 "agent_identifier": agent_identifier
             } if agent_identifier else None
         }
         
+        return create_success_response(
+            result=result_data,
+            message="Analytics summary retrieved successfully",
+            metadata={
+                "endpoint": "job_analytics",
+                "user_id": user["id"],
+                "period_days": days,
+                "agent_filter": agent_identifier,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
     except Exception as e:
         logger.error("Jobs analytics retrieval failed", exception=e, user_id=user["id"])
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "message": f"Failed to retrieve analytics: {str(e)}",
-                "error_code": "ANALYTICS_ERROR",
+        return create_error_response(
+            error_message=str(e),
+            message="Failed to retrieve analytics",
+            metadata={
+                "error_code": "JOB_ANALYTICS_ERROR",
+                "user_id": user["id"],
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         ) 

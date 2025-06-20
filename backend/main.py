@@ -28,7 +28,8 @@ from agent_framework import register_agent_endpoints, get_registered_agents
 from agents import discover_and_register_agents, instantiate_and_register_agents
 from job_pipeline import start_job_pipeline, stop_job_pipeline
 from database import get_database_operations, check_database_health
-from models import JobCreateRequest, JobResponse
+from models import JobCreateRequest, JobResponse, ApiResponse
+from utils.responses import create_error_response
 from static_files import setup_static_file_serving
 
 # Import all route modules
@@ -185,7 +186,7 @@ setup_static_file_serving(app)
 
 @app.exception_handler(AgentError)
 async def agent_error_handler(request: Request, exc: AgentError):
-    """Handle agent-specific errors with detailed responses"""
+    """Handle agent-specific errors with detailed ApiResponse format"""
     logger.warning(
         "Agent error occurred",
         exception=exc,
@@ -201,20 +202,28 @@ async def agent_error_handler(request: Request, exc: AgentError):
             method="agent_operation"
         )
     
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "error": "Agent Error",
-            "message": str(exc.detail),
-            "type": type(exc).__name__,
+    # Create consistent error response using ApiResponse format
+    error_response = create_error_response(
+        error_message=str(exc.detail),
+        message="Agent Error",
+        metadata={
+            "error_type": type(exc).__name__,
+            "error_code": f"AGENT_ERROR_{exc.status_code}",
             "status_code": exc.status_code,
+            "path": request.url.path,
+            "method": request.method,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
+    )
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_response.model_dump()
     )
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Global exception handler with comprehensive logging"""
+    """Global exception handler with comprehensive logging and ApiResponse format"""
     logger.error(
         "Unhandled exception occurred",
         exception=exc,
@@ -222,28 +231,53 @@ async def global_exception_handler(request: Request, exc: Exception):
         method=request.method
     )
     
+    # Log security events for authentication failures
     if isinstance(exc, HTTPException) and exc.status_code in [401, 403]:
         security_logger.log_auth_failure(
             reason=str(exc.detail),
             method="unknown"
         )
     
+    # Determine status code and error details
+    status_code = 500
+    error_code = "INTERNAL_SERVER_ERROR"
+    error_message = "An unexpected error occurred"
+    
+    if isinstance(exc, HTTPException):
+        status_code = exc.status_code
+        error_code = f"HTTP_ERROR_{exc.status_code}"
+        error_message = str(exc.detail)
+    
+    # Create error response with appropriate detail level
     if settings.is_development():
-        content = {
-            "error": "Internal server error",
-            "detail": str(exc),
-            "type": type(exc).__name__,
-            "path": request.url.path
-        }
+        error_response = create_error_response(
+            error_message=error_message,
+            message="Internal server error",
+            metadata={
+                "error_type": type(exc).__name__,
+                "error_code": error_code,
+                "status_code": status_code,
+                "path": request.url.path,
+                "method": request.method,
+                "detail": str(exc),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
     else:
-        content = {
-            "error": "Internal server error",
-            "message": "An unexpected error occurred"
-        }
+        error_response = create_error_response(
+            error_message=error_message,
+            message="Internal server error",
+            metadata={
+                "error_type": "ServerError",
+                "error_code": error_code,
+                "status_code": status_code,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
     
     return JSONResponse(
-        status_code=500,
-        content=content
+        status_code=status_code,
+        content=error_response.model_dump()
     )
 
 # Run the application

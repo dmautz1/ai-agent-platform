@@ -73,6 +73,15 @@ export interface JobsQuery {
 export interface JobMinimal {
   id: string;
   status: JobStatus;
+  agent_identifier: string;
+  title: string;
+  created_at: string;
   updated_at: string;
+}
+
+// Dashboard-compatible job interface that includes minimal data plus required fields
+export interface JobDashboard extends JobMinimal {
+  user_id: string;
   priority: number;
+  data: Record<string, unknown>;
 } 

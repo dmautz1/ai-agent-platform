@@ -3,7 +3,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useToast } from '@/components/ui/toast';
 import { api, handleApiError } from '@/lib/api';
-import type { AgentSchemaResponse, FormFieldSchema } from '@/lib/types';
+import type { AgentSchemaResult, FormFieldSchema } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
@@ -27,7 +27,7 @@ import type {
 
 export function JobForm({ agentId, onJobCreated }: DynamicJobFormProps) {
   // State management
-  const [agentSchema, setAgentSchema] = useState<AgentSchemaResponse | null>(null);
+  const [agentSchema, setAgentSchema] = useState<AgentSchemaResult | null>(null);
   const [formSchema, setFormSchema] = useState<Record<string, FormFieldSchema> | null>(null);
   const [requiredFields, setRequiredFields] = useState<string[]>([]);
   const [loadingState, setLoadingState] = useState<LoadingState>({

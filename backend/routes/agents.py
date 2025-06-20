@@ -9,7 +9,7 @@ Contains endpoints for:
 """
 
 from fastapi import APIRouter, HTTPException, Depends
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from datetime import datetime, timezone
 
 from auth import get_current_user, get_optional_user
@@ -18,10 +18,28 @@ from agent_framework import get_registered_agents
 from agent import get_agent_registry
 from config.agent_config import get_agent_config_manager, get_agent_config, AgentProfile, AgentPerformanceMode
 from logging_system import get_logger
+from models import ApiResponse
+from utils.responses import (
+    create_success_response,
+    create_error_response,
+    api_response_validator
+)
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+
+# Agent Response Types
+AgentListResponse = Dict[str, Union[List[Dict[str, Any]], int, str, Dict[str, Any]]]
+AgentInfoResponse = Dict[str, Any]
+AgentHealthResponse = Dict[str, Any]
+AgentSchemaResponse = Dict[str, Any]
+AgentConfigListResponse = Dict[str, Union[Dict[str, Any], int]]
+AgentConfigResponse = Dict[str, Any]
+AgentConfigUpdateResponse = Dict[str, Any]
+AgentConfigSaveResponse = Dict[str, Any]
+AgentProfilesResponse = Dict[str, Any]
+AgentProfileUpdateResponse = Dict[str, Any]
 
 def log_agent_access(agent_identifier: str, action: str, user_id: Optional[str] = None, success: bool = True):
     """Log agent access for monitoring and analytics"""
@@ -33,12 +51,8 @@ def log_agent_access(agent_identifier: str, action: str, user_id: Optional[str] 
         success=success
     )
 
-def _infer_form_field_type(prop_schema: Dict[str, Any]) -> str:
-    """Infer appropriate form field type from property schema - DEPRECATED"""
-    # This function is no longer used - frontend now does pure Pydantic inference
-    return "text"
-
-@router.get("")
+@router.get("", response_model=ApiResponse[AgentListResponse])
+@api_response_validator(result_type=AgentListResponse)
 async def get_agents(user: Dict[str, Any] = Depends(get_optional_user)):
     """Get list of available agents with comprehensive information"""
     logger.info("Agent list requested", user_id=user["id"] if user else None)
@@ -46,15 +60,12 @@ async def get_agents(user: Dict[str, Any] = Depends(get_optional_user)):
     try:
         # Get discovery system
         discovery_system = get_agent_discovery_system()
-        
-        # Get all discovered agents
         discovered_agents = discovery_system.get_discovered_agents()
         
         # Get registered agent instances
         registered_agents = get_registered_agents()
         
         agent_list = []
-        
         for agent_id, metadata in discovered_agents.items():
             # Get the registered instance if available
             agent_instance = registered_agents.get(agent_id)
@@ -74,45 +85,128 @@ async def get_agents(user: Dict[str, Any] = Depends(get_optional_user)):
                 "framework_version": "1.0"
             }
             
-            # Add instance-specific information if available
-            if agent_instance:
-                try:
-                    instance_info = await agent_instance.get_agent_info()
-                    agent_info.update({
-                        "execution_count": instance_info.get("execution_count", 0),
-                        "last_execution_time": instance_info.get("last_execution_time"),
-                        "status": instance_info.get("status", "unknown"),
-                        "endpoints": instance_info.get("endpoints", []) if hasattr(agent_instance, 'get_endpoints') else [],
-                        "models": instance_info.get("models", []) if hasattr(agent_instance, 'get_models') else []
-                    })
-                except Exception as e:
-                    logger.warning(f"Failed to get instance info for agent {agent_id}", exception=e)
-                    agent_info.update({
-                        "execution_count": 0,
-                        "last_execution_time": None,
-                        "status": "error",
-                        "error": str(e)
-                    })
+            # Temporarily removed agent instance information retrieval to isolate the issue
+            # TODO: Fix underlying AttributeError in agent_instance.get_agent_info() before re-enabling
+            # The issue is that some AttributeError objects are not JSON serializable
+            # if agent_instance:
+            #     try:
+            #         instance_info = await agent_instance.get_agent_info()
+            #         agent_info.update({
+            #             "execution_count": instance_info.get("execution_count", 0),
+            #             "last_execution_time": instance_info.get("last_execution_time"),
+            #             "status": instance_info.get("status", "available"),
+            #             "endpoints": instance_info.get("endpoints", []) if hasattr(agent_instance, 'get_endpoints') else [],
+            #             "models": instance_info.get("models", []) if hasattr(agent_instance, 'get_models') else []
+            #         })
+            #         agent_info["has_error"] = False
+            #     except Exception as e:
+            #         logger.warning(f"Failed to get instance info for agent {agent_id}", exception=e)
+            #         # Safely convert exception to string to avoid JSON serialization issues
+            #         try:
+            #             error_str = str(e)
+            #         except:
+            #             error_str = f"Error occurred in agent {agent_id}: {type(e).__name__}"
+            #         
+            #         agent_info.update({
+            #             "execution_count": 0,
+            #             "last_execution_time": None,
+            #             "status": "error",
+            #             "error": error_str,
+            #             "has_error": True,
+            #             "endpoints": [],
+            #             "models": []
+            #         })
+            # elif metadata.load_error:
+            if metadata.load_error:
+                # Agent had a load error during discovery
+                agent_info.update({
+                    "status": "error",
+                    "has_error": True,
+                    "error_message": metadata.load_error,
+                    "execution_count": 0,
+                    "last_execution_time": None,
+                    "endpoints": [],
+                    "models": []
+                })
+            elif agent_instance is not None:
+                # Agent is loaded and available - basic info without calling get_agent_info()
+                agent_info.update({
+                    "status": "available",
+                    "has_error": False,
+                    "execution_count": 0,
+                    "last_execution_time": None,
+                    "endpoints": [],
+                    "models": []
+                })
+            else:
+                # Agent is discovered but not loaded
+                agent_info.update({
+                    "status": "not_loaded",
+                    "has_error": False,
+                    "execution_count": 0,
+                    "last_execution_time": None,
+                    "endpoints": [],
+                    "models": []
+                })
             
             agent_list.append(agent_info)
         
-        return {
-            "success": True,
+        # Build result data with defensive error handling
+        try:
+            last_scan_time = None
+            if hasattr(discovery_system, 'last_scan_time') and discovery_system.last_scan_time:
+                if hasattr(discovery_system.last_scan_time, 'isoformat'):
+                    last_scan_time = discovery_system.last_scan_time.isoformat()
+                else:
+                    last_scan_time = str(discovery_system.last_scan_time)
+        except Exception as scan_time_error:
+            logger.warning(f"Error getting last_scan_time: {scan_time_error}")
+            last_scan_time = None
+        
+        try:
+            scan_count = getattr(discovery_system, 'scan_count', 0)
+        except Exception as scan_count_error:
+            logger.warning(f"Error getting scan_count: {scan_count_error}")
+            scan_count = 0
+        
+        result_data = {
             "agents": agent_list,
             "total_count": len(agent_list),
             "loaded_count": len(registered_agents),
             "discovery_info": {
-                "last_scan": discovery_system.last_scan_time.isoformat() if discovery_system.last_scan_time else None,
-                "scan_count": getattr(discovery_system, 'scan_count', 0)
-            },
-            "message": f"Found {len(agent_list)} agents ({len(registered_agents)} loaded)"
+                "last_scan": last_scan_time,
+                "scan_count": scan_count
+            }
         }
         
+        return create_success_response(
+            result=result_data,
+            message=f"Found {len(agent_list)} agents ({len(registered_agents)} loaded)",
+            metadata={
+                "endpoint": "agents_list",
+                "user_id": user["id"] if user else None,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
     except Exception as e:
+        # Ensure the exception is properly converted to string to avoid JSON serialization issues
+        error_message = str(e) if e else "Unknown error occurred"
+        
         logger.error("Agent listing failed", exception=e, user_id=user["id"] if user else None)
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve agents: {str(e)}")
+        return create_error_response(
+            error_message=error_message,
+            message="Failed to retrieve agents",
+            metadata={
+                "error_code": "AGENTS_LIST_ERROR",
+                "user_id": user["id"] if user else None,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "error_type": type(e).__name__ if e else "UnknownError"
+            }
+        )
 
-@router.get("/{agent_name}")
+@router.get("/{agent_name}", response_model=ApiResponse[AgentInfoResponse])
+@api_response_validator(result_type=AgentInfoResponse)
 async def get_agent_info(
     agent_name: str,
     user: Dict[str, Any] = Depends(get_optional_user)
@@ -127,7 +221,16 @@ async def get_agent_info(
         
         if agent_name not in discovered_agents:
             log_agent_access(agent_name, "info_request", user_id=user["id"] if user else None, success=False)
-            raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
+            return create_error_response(
+                error_message=f"Agent '{agent_name}' not found",
+                message="Agent not found in discovered agents",
+                metadata={
+                    "error_code": "AGENT_NOT_FOUND",
+                    "agent_name": agent_name,
+                    "user_id": user["id"] if user else None,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
         
         metadata = discovered_agents[agent_name]
         
@@ -156,6 +259,9 @@ async def get_agent_info(
             try:
                 instance_info = await agent_instance.get_agent_info()
                 agent_info.update(instance_info)
+                # Ensure status is set to available if no error occurred
+                if "status" not in agent_info:
+                    agent_info["status"] = "available"
             except Exception as e:
                 logger.warning(f"Failed to get detailed info for agent {agent_name}", exception=e)
                 agent_info["status"] = "error"
@@ -165,16 +271,33 @@ async def get_agent_info(
             agent_info["message"] = "Agent discovered but not currently loaded"
         
         log_agent_access(agent_name, "info_request", user_id=user["id"] if user else None)
-        agent_info["success"] = True
-        return agent_info
         
-    except HTTPException:
-        raise
+        return create_success_response(
+            result=agent_info,
+            message=f"Agent information retrieved for {agent_name}",
+            metadata={
+                "endpoint": "agent_info",
+                "agent_name": agent_name,
+                "user_id": user["id"] if user else None,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
     except Exception as e:
         logger.error("Agent info retrieval failed", exception=e, agent_name=agent_name, user_id=user["id"] if user else None)
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve agent info: {str(e)}")
+        return create_error_response(
+            error_message=str(e),
+            message="Failed to retrieve agent information",
+            metadata={
+                "error_code": "AGENT_INFO_ERROR",
+                "agent_name": agent_name,
+                "user_id": user["id"] if user else None,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
 
-@router.get("/{agent_name}/health")
+@router.get("/{agent_name}/health", response_model=ApiResponse[AgentHealthResponse])
+@api_response_validator(result_type=AgentHealthResponse)
 async def get_agent_health(
     agent_name: str,
     user: Dict[str, Any] = Depends(get_optional_user)
@@ -194,29 +317,66 @@ async def get_agent_health(
             
             if agent_name in discovered_agents:
                 log_agent_access(agent_name, "health_check", user_id=user["id"] if user else None, success=False)
-                return {
+                health_data = {
                     "agent_name": agent_name,
                     "status": "not_loaded",
                     "message": "Agent discovered but not currently loaded",
                     "is_available": False
                 }
+                return create_success_response(
+                    result=health_data,
+                    message="Agent not loaded",
+                    metadata={
+                        "endpoint": "agent_health",
+                        "agent_name": agent_name,
+                        "user_id": user["id"] if user else None,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
+                )
             else:
                 log_agent_access(agent_name, "health_check", user_id=user["id"] if user else None, success=False)
-                raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
+                return create_error_response(
+                    error_message=f"Agent '{agent_name}' not found",
+                    message="Agent not found",
+                    metadata={
+                        "error_code": "AGENT_NOT_FOUND",
+                        "agent_name": agent_name,
+                        "user_id": user["id"] if user else None,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
+                )
         
         # Get health status from agent
         health_status = await agent_instance.health_check()
         
         log_agent_access(agent_name, "health_check", user_id=user["id"] if user else None)
-        return health_status
         
-    except HTTPException:
-        raise
+        return create_success_response(
+            result=health_status,
+            message=f"Health check completed for {agent_name}",
+            metadata={
+                "endpoint": "agent_health",
+                "agent_name": agent_name,
+                "user_id": user["id"] if user else None,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
     except Exception as e:
         logger.error("Agent health check failed", exception=e, agent_name=agent_name, user_id=user["id"] if user else None)
-        raise HTTPException(status_code=500, detail=f"Failed to check agent health: {str(e)}")
+        return create_error_response(
+            error_message=str(e),
+            message="Failed to check agent health",
+            metadata={
+                "error_code": "AGENT_HEALTH_ERROR",
+                "agent_name": agent_name,
+                "user_id": user["id"] if user else None,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
 
-@router.get("/{agent_id}/schema")
+@router.get("/{agent_id}/schema", response_model=ApiResponse[AgentSchemaResponse])
+@api_response_validator(result_type=AgentSchemaResponse)
 async def get_agent_schema(agent_id: str):
     """Get job data schema for an agent to enable dynamic form generation - public endpoint"""
     log_agent_access(agent_id, "schema_request")
@@ -228,12 +388,16 @@ async def get_agent_schema(agent_id: str):
         
         if agent_id not in discovered_agents:
             log_agent_access(agent_id, "schema_request", success=False)
-            raise HTTPException(status_code=404, detail={
-                "message": f"Agent '{agent_id}' not found in discovered agents",
-                "agent_id": agent_id,
-                "agent_found": False,
-                "suggestion": "Check available agents using GET /agents endpoint"
-            })
+            return create_error_response(
+                error_message=f"Agent '{agent_id}' not found in discovered agents",
+                message="Agent not found",
+                metadata={
+                    "error_code": "AGENT_NOT_FOUND",
+                    "agent_id": agent_id,
+                    "suggestion": "Check available agents using GET /agents endpoint",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
         
         metadata = discovered_agents[agent_id]
         
@@ -242,9 +406,7 @@ async def get_agent_schema(agent_id: str):
         agent_instance = registered_agents.get(agent_id)
         
         if not agent_instance:
-            return {
-                "status": "success",
-                "message": f"Agent '{agent_id}' found but not currently loaded - schema unavailable",
+            schema_data = {
                 "agent_id": agent_id,
                 "agent_name": metadata.name,
                 "description": metadata.description,
@@ -253,6 +415,15 @@ async def get_agent_schema(agent_id: str):
                 "available_models": [],
                 "schemas": {}
             }
+            return create_success_response(
+                result=schema_data,
+                message=f"Agent '{agent_id}' found but not currently loaded - schema unavailable",
+                metadata={
+                    "endpoint": "agent_schema",
+                    "agent_id": agent_id,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
         
         # Extract job data models from the agent
         models = agent_instance.get_models() if hasattr(agent_instance, 'get_models') else {}
@@ -298,23 +469,36 @@ async def get_agent_schema(agent_id: str):
                     "model_name": model_name
                 }
         
-        log_agent_access(agent_id, "schema_request")
-        return {
-            "status": "success",
-            "message": f"Schema retrieved for agent: {agent_id}",
-            "agent_found": True,
-            "instance_available": True,
-            **schema_info
-        }
+        schema_info["agent_found"] = True
+        schema_info["instance_available"] = True
         
-    except HTTPException:
-        raise
+        log_agent_access(agent_id, "schema_request")
+        
+        return create_success_response(
+            result=schema_info,
+            message=f"Schema retrieved for agent: {agent_id}",
+            metadata={
+                "endpoint": "agent_schema",
+                "agent_id": agent_id,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
     except Exception as e:
         logger.error("Agent schema retrieval failed", exception=e, agent_id=agent_id)
         log_agent_access(agent_id, "schema_request", success=False)
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve agent schema: {str(e)}")
+        return create_error_response(
+            error_message=str(e),
+            message="Failed to retrieve agent schema",
+            metadata={
+                "error_code": "AGENT_SCHEMA_ERROR",
+                "agent_id": agent_id,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
 
-@router.get("/config/agents")
+@router.get("/config/agents", response_model=ApiResponse[AgentConfigListResponse])
+@api_response_validator(result_type=AgentConfigListResponse)
 async def get_all_agent_configs(user: Dict[str, Any] = Depends(get_current_user)):
     """Get configuration for all agents"""
     logger.info("All agent configs requested", user_id=user["id"])
@@ -323,18 +507,35 @@ async def get_all_agent_configs(user: Dict[str, Any] = Depends(get_current_user)
         config_manager = get_agent_config_manager()
         all_configs = config_manager.get_all_configs()
         
-        return {
-            "success": True,
-            "message": "All agent configurations retrieved",
+        result_data = {
             "configs": {name: config.to_dict() for name, config in all_configs.items()},
             "total_count": len(all_configs)
         }
         
+        return create_success_response(
+            result=result_data,
+            message="All agent configurations retrieved",
+            metadata={
+                "endpoint": "agent_configs_list",
+                "user_id": user["id"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
     except Exception as e:
         logger.error("All agent configs retrieval failed", exception=e, user_id=user["id"])
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve agent configs: {str(e)}")
+        return create_error_response(
+            error_message=str(e),
+            message="Failed to retrieve agent configs",
+            metadata={
+                "error_code": "AGENT_CONFIGS_ERROR",
+                "user_id": user["id"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
 
-@router.get("/config/agents/{agent_name}")
+@router.get("/config/agents/{agent_name}", response_model=ApiResponse[AgentConfigResponse])
+@api_response_validator(result_type=AgentConfigResponse)
 async def get_agent_config_endpoint(
     agent_name: str,
     user: Dict[str, Any] = Depends(get_current_user)
@@ -345,18 +546,37 @@ async def get_agent_config_endpoint(
     try:
         config = get_agent_config(agent_name)
         
-        return {
-            "success": True,
-            "message": f"Configuration retrieved for agent: {agent_name}",
+        result_data = {
             "agent_name": agent_name,
             "config": config.to_dict()
         }
         
+        return create_success_response(
+            result=result_data,
+            message=f"Configuration retrieved for agent: {agent_name}",
+            metadata={
+                "endpoint": "agent_config",
+                "agent_name": agent_name,
+                "user_id": user["id"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
     except Exception as e:
         logger.error("Agent config retrieval failed", exception=e, agent_name=agent_name, user_id=user["id"])
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve config for {agent_name}: {str(e)}")
+        return create_error_response(
+            error_message=str(e),
+            message=f"Failed to retrieve config for {agent_name}",
+            metadata={
+                "error_code": "AGENT_CONFIG_ERROR",
+                "agent_name": agent_name,
+                "user_id": user["id"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
 
-@router.put("/config/agents/{agent_name}")
+@router.put("/config/agents/{agent_name}", response_model=ApiResponse[AgentConfigUpdateResponse])
+@api_response_validator(result_type=AgentConfigUpdateResponse)
 async def update_agent_config_endpoint(
     agent_name: str,
     config_updates: Dict[str, Any],
@@ -376,29 +596,67 @@ async def update_agent_config_endpoint(
         validation_errors = config_manager.validate_config(temp_config)
         
         if validation_errors:
-            return {
+            result_data = {
                 "success": False,
-                "message": "Configuration validation failed",
                 "errors": validation_errors
             }
+            return create_success_response(
+                result=result_data,
+                message="Configuration validation failed",
+                metadata={
+                    "endpoint": "agent_config_update",
+                    "agent_name": agent_name,
+                    "user_id": user["id"],
+                    "validation_failed": True,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
         
         # Apply the updates
         success = config_manager.update_config(agent_name, config_updates)
         
         if success:
-            return {
+            result_data = {
                 "success": True,
-                "message": f"Configuration updated for agent: {agent_name}",
                 "config": config_manager.get_config(agent_name).to_dict()
             }
+            return create_success_response(
+                result=result_data,
+                message=f"Configuration updated for agent: {agent_name}",
+                metadata={
+                    "endpoint": "agent_config_update",
+                    "agent_name": agent_name,
+                    "user_id": user["id"],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
         else:
-            raise HTTPException(status_code=500, detail="Failed to update configuration")
+            return create_error_response(
+                error_message="Failed to update configuration",
+                message="Configuration update failed",
+                metadata={
+                    "error_code": "CONFIG_UPDATE_FAILED",
+                    "agent_name": agent_name,
+                    "user_id": user["id"],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
         
     except Exception as e:
         logger.error("Agent config update failed", exception=e, agent_name=agent_name, user_id=user["id"])
-        raise HTTPException(status_code=500, detail=f"Failed to update config for {agent_name}: {str(e)}")
+        return create_error_response(
+            error_message=str(e),
+            message=f"Failed to update config for {agent_name}",
+            metadata={
+                "error_code": "AGENT_CONFIG_UPDATE_ERROR",
+                "agent_name": agent_name,
+                "user_id": user["id"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
 
-@router.post("/config/agents/{agent_name}/save")
+@router.post("/config/agents/{agent_name}/save", response_model=ApiResponse[AgentConfigSaveResponse])
+@api_response_validator(result_type=AgentConfigSaveResponse)
 async def save_agent_config_endpoint(
     agent_name: str,
     user: Dict[str, Any] = Depends(get_current_user)
@@ -411,18 +669,46 @@ async def save_agent_config_endpoint(
         success = config_manager.save_config(agent_name)
         
         if success:
-            return {
-                "success": True,
-                "message": f"Configuration saved for agent: {agent_name}"
+            result_data = {
+                "success": True
             }
+            return create_success_response(
+                result=result_data,
+                message=f"Configuration saved for agent: {agent_name}",
+                metadata={
+                    "endpoint": "agent_config_save",
+                    "agent_name": agent_name,
+                    "user_id": user["id"],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
         else:
-            raise HTTPException(status_code=500, detail="Failed to save configuration")
+            return create_error_response(
+                error_message="Failed to save configuration",
+                message="Configuration save failed",
+                metadata={
+                    "error_code": "CONFIG_SAVE_FAILED",
+                    "agent_name": agent_name,
+                    "user_id": user["id"],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
         
     except Exception as e:
         logger.error("Agent config save failed", exception=e, agent_name=agent_name, user_id=user["id"])
-        raise HTTPException(status_code=500, detail=f"Failed to save config for {agent_name}: {str(e)}")
+        return create_error_response(
+            error_message=str(e),
+            message=f"Failed to save config for {agent_name}",
+            metadata={
+                "error_code": "AGENT_CONFIG_SAVE_ERROR",
+                "agent_name": agent_name,
+                "user_id": user["id"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
 
-@router.get("/config/profiles")
+@router.get("/config/profiles", response_model=ApiResponse[AgentProfilesResponse])
+@api_response_validator(result_type=AgentProfilesResponse)
 async def get_available_profiles(user: Dict[str, Any] = Depends(get_current_user)):
     """Get available agent profiles and performance modes"""
     logger.info("Available profiles requested", user_id=user["id"])
@@ -439,17 +725,30 @@ async def get_available_profiles(user: Dict[str, Any] = Depends(get_current_user
             ]
         }
         
-        return {
-            "success": True,
-            "message": "Available profiles and performance modes retrieved",
-            "profiles": profiles
-        }
+        return create_success_response(
+            result={"profiles": profiles},
+            message="Available profiles and performance modes retrieved",
+            metadata={
+                "endpoint": "agent_profiles",
+                "user_id": user["id"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
         
     except Exception as e:
         logger.error("Available profiles retrieval failed", exception=e, user_id=user["id"])
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve available profiles: {str(e)}")
+        return create_error_response(
+            error_message=str(e),
+            message="Failed to retrieve available profiles",
+            metadata={
+                "error_code": "AGENT_PROFILES_ERROR",
+                "user_id": user["id"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
 
-@router.post("/config/agents/{agent_name}/profile")
+@router.post("/config/agents/{agent_name}/profile", response_model=ApiResponse[AgentProfileUpdateResponse])
+@api_response_validator(result_type=AgentProfileUpdateResponse)
 async def set_agent_profile(
     agent_name: str,
     profile_data: Dict[str, str],
@@ -466,10 +765,28 @@ async def set_agent_profile(
         performance_mode = profile_data.get("performance_mode")
         
         if profile and profile not in [p.value for p in AgentProfile]:
-            raise HTTPException(status_code=400, detail=f"Invalid profile: {profile}")
+            return create_error_response(
+                error_message=f"Invalid profile: {profile}",
+                message="Invalid profile specified",
+                metadata={
+                    "error_code": "INVALID_PROFILE",
+                    "agent_name": agent_name,
+                    "user_id": user["id"],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
         
         if performance_mode and performance_mode not in [m.value for m in AgentPerformanceMode]:
-            raise HTTPException(status_code=400, detail=f"Invalid performance mode: {performance_mode}")
+            return create_error_response(
+                error_message=f"Invalid performance mode: {performance_mode}",
+                message="Invalid performance mode specified",
+                metadata={
+                    "error_code": "INVALID_PERFORMANCE_MODE",
+                    "agent_name": agent_name,
+                    "user_id": user["id"],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
         
         # Update config
         updates = {}
@@ -481,16 +798,41 @@ async def set_agent_profile(
         success = config_manager.update_config(agent_name, updates)
         
         if success:
-            return {
+            result_data = {
                 "success": True,
-                "message": f"Profile updated for agent: {agent_name}",
                 "config": config_manager.get_config(agent_name).to_dict()
             }
+            return create_success_response(
+                result=result_data,
+                message=f"Profile updated for agent: {agent_name}",
+                metadata={
+                    "endpoint": "agent_profile_update",
+                    "agent_name": agent_name,
+                    "user_id": user["id"],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
         else:
-            raise HTTPException(status_code=500, detail="Failed to update profile")
+            return create_error_response(
+                error_message="Failed to update profile",
+                message="Profile update failed",
+                metadata={
+                    "error_code": "PROFILE_UPDATE_FAILED",
+                    "agent_name": agent_name,
+                    "user_id": user["id"],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
         
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error("Agent profile update failed", exception=e, agent_name=agent_name, user_id=user["id"])
-        raise HTTPException(status_code=500, detail=f"Failed to update profile for {agent_name}: {str(e)}") 
+        return create_error_response(
+            error_message=str(e),
+            message=f"Failed to update profile for {agent_name}",
+            metadata={
+                "error_code": "AGENT_PROFILE_UPDATE_ERROR",
+                "agent_name": agent_name,
+                "user_id": user["id"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        ) 

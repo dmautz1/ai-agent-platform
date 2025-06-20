@@ -8,7 +8,7 @@ Handles:
 """
 
 from fastapi import APIRouter, HTTPException, Depends
-from typing import Dict, Any
+from typing import Dict, Any, Union, List
 from datetime import datetime, timezone
 import uuid
 
@@ -18,12 +18,22 @@ from job_pipeline import get_job_pipeline
 from agent_discovery import get_agent_discovery_system
 from agent_framework import get_registered_agents
 from agent import get_agent_registry, AgentError, AgentNotFoundError, AgentDisabledError, AgentNotLoadedError
-from models import JobCreateRequest
+from models import JobCreateRequest, ApiResponse
 from logging_system import get_logger
+from utils.responses import (
+    create_success_response,
+    create_error_response,
+    create_validation_error_response,
+    api_response_validator
+)
 
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["job-creation"])
+
+# Job Creation Response Types
+CreateJobResponse = Dict[str, Union[str, bool, Dict[str, Any]]]
+ValidationResult = Dict[str, Union[bool, str, Dict[str, Any], List[Dict[str, Any]]]]
 
 def log_agent_access(agent_identifier: str, operation: str, user_id: str = None, success: bool = True):
     """Log agent access for monitoring and analytics"""
@@ -213,7 +223,8 @@ async def _validate_job_data_against_agent_schema(agent_identifier: str, job_dat
             "model_used": None
         }
 
-@router.post("/create")
+@router.post("/create", response_model=ApiResponse[CreateJobResponse])
+@api_response_validator(result_type=CreateJobResponse)
 async def create_job(
     request: JobCreateRequest,
     user: Dict[str, Any] = Depends(get_current_user)
@@ -250,15 +261,18 @@ async def create_job(
                 errors=schema_validation["errors"]
             )
             
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "message": "Job data validation failed",
-                    "error_code": "VALIDATION_ERROR",
-                    "validation_errors": schema_validation["errors"],
-                    "schema_info": schema_validation.get("schema_info"),
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
+            # Convert validation errors to proper format for create_validation_error_response
+            validation_errors = []
+            for error in schema_validation["errors"]:
+                validation_errors.append({
+                    "loc": [error["field"]],
+                    "msg": error["message"],
+                    "type": error["type"]
+                })
+            
+            return create_validation_error_response(
+                validation_errors=validation_errors,
+                message="Job data validation failed"
             )
         
         # Create job record
@@ -276,9 +290,15 @@ async def create_job(
         job = await db_ops.create_job(job_data)
         
         if not job:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to create job record"
+            return create_error_response(
+                error_message="Failed to create job record",
+                message="Job creation failed",
+                metadata={
+                    "error_code": "JOB_CREATION_FAILED",
+                    "agent_identifier": request.agent_identifier,
+                    "user_id": user["id"],
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
             )
         
         # Submit job to processing pipeline
@@ -309,12 +329,23 @@ async def create_job(
             pipeline_submitted=pipeline_submitted
         )
         
-        return {
-            "success": True,
-            "message": "Job created successfully",
+        result_data = {
             "job_id": job["id"],
-            "job": job
+            "job": job,
+            "pipeline_submitted": pipeline_submitted
         }
+        
+        return create_success_response(
+            result=result_data,
+            message="Job created successfully",
+            metadata={
+                "endpoint": "create_job",
+                "job_id": job["id"],
+                "agent_identifier": request.agent_identifier,
+                "user_id": user["id"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
         
     except (AgentNotFoundError, AgentDisabledError, AgentNotLoadedError) as e:
         log_agent_access(request.agent_identifier, "job_creation_failed", user["id"], False)
@@ -324,18 +355,16 @@ async def create_job(
             user_id=user["id"],
             error=str(e)
         )
-        raise HTTPException(
-            status_code=e.status_code,
-            detail={
-                "message": str(e),
+        return create_error_response(
+            error_message=str(e),
+            message="Agent validation failed",
+            metadata={
                 "error_code": "AGENT_ERROR",
                 "agent_identifier": request.agent_identifier,
+                "user_id": user["id"],
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
-    except HTTPException:
-        # Re-raise HTTP exceptions (like validation errors)
-        raise
     except Exception as e:
         logger.error(
             "Job creation failed",
@@ -343,16 +372,19 @@ async def create_job(
             agent_identifier=request.agent_identifier,
             user_id=user["id"]
         )
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "message": f"Failed to create job: {str(e)}",
-                "error_code": "INTERNAL_ERROR",
+        return create_error_response(
+            error_message=str(e),
+            message="Failed to create job",
+            metadata={
+                "error_code": "JOB_CREATION_ERROR",
+                "agent_identifier": request.agent_identifier,
+                "user_id": user["id"],
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
 
-@router.post("/validate")
+@router.post("/validate", response_model=ApiResponse[ValidationResult])
+@api_response_validator(result_type=ValidationResult)
 async def validate_job_data(
     request: JobCreateRequest,
     user: Dict[str, Any] = Depends(get_current_user)
@@ -378,9 +410,7 @@ async def validate_job_data(
             request.data
         )
         
-        return {
-            "success": True,
-            "message": "Validation completed",
+        result_data = {
             "validation_result": {
                 "agent_valid": agent_validation["valid"],
                 "data_valid": schema_validation["valid"],
@@ -389,9 +419,19 @@ async def validate_job_data(
                 "schema_info": schema_validation.get("schema_info"),
                 "model_used": schema_validation.get("model_used")
             },
-            "agent_metadata": agent_validation["metadata"],
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "agent_metadata": agent_validation["metadata"]
         }
+        
+        return create_success_response(
+            result=result_data,
+            message="Validation completed",
+            metadata={
+                "endpoint": "validate_job_data",
+                "agent_identifier": request.agent_identifier,
+                "user_id": user["id"],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
         
     except (AgentNotFoundError, AgentDisabledError, AgentNotLoadedError) as e:
         logger.warning(
@@ -400,16 +440,26 @@ async def validate_job_data(
             user_id=user["id"],
             error=str(e)
         )
-        return {
-            "success": False,
-            "message": str(e),
+        
+        result_data = {
             "validation_result": {
                 "agent_valid": False,
                 "data_valid": False,
                 "errors": [{"field": "agent", "message": str(e), "type": "agent_error"}]
-            },
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            }
         }
+        
+        return create_success_response(
+            result=result_data,
+            message=str(e),
+            metadata={
+                "endpoint": "validate_job_data",
+                "agent_identifier": request.agent_identifier,
+                "user_id": user["id"],
+                "agent_validation_failed": True,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
     except Exception as e:
         logger.error(
             "Job data validation failed",
@@ -417,11 +467,13 @@ async def validate_job_data(
             agent_identifier=request.agent_identifier,
             user_id=user["id"]
         )
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "message": f"Validation failed: {str(e)}",
+        return create_error_response(
+            error_message=str(e),
+            message="Validation failed",
+            metadata={
                 "error_code": "VALIDATION_ERROR",
+                "agent_identifier": request.agent_identifier,
+                "user_id": user["id"],
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         ) 
