@@ -35,6 +35,7 @@
     "@testing-library/dom": "^10.4.0",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@uiw/react-json-view": "^2.0.0-alpha.32",
+    "@vitejs/plugin-react": "^4.4.1",
     "axios": "^1.9.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -48,10 +49,9 @@
     "react-syntax-highlighter": "^15.6.1",
     "tailwind-merge": "^3.3.0",
     "tailwindcss": "^4.1.8",
-    "typescript": "~5.8.3",
-    "@vitejs/plugin-react": "^4.4.1",
-    "vite": "^6.3.5",
     "tw-animate-css": "^1.3.2",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.5",
     "zod": "^3.25.49"
   },
   "devDependencies": {
@@ -62,6 +62,7 @@
     "@types/node": "^22.15.28",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
+    "@vitest/coverage-v8": "^3.2.3",
     "@vitest/ui": "^3.1.4",
     "dotenv": "^16.5.0",
     "eslint": "^9.25.0",

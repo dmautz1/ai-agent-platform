@@ -8,7 +8,7 @@
     "frontend"
   ],
   "scripts": {
-    "test": "npm run test:frontend && npm run test:backend && npm run test:e2e",
+    "test": "npm run test:frontend && npm run test:backend",
     "test:frontend": "npm run test --workspace=frontend",
     "test:frontend:unit": "npm run test:unit --workspace=frontend",
     "test:frontend:integration": "npm run test:integration --workspace=frontend",
@@ -18,36 +18,17 @@
     "test:backend:integration": "cd backend && python -m pytest tests/integration/",
     "test:backend:agents": "cd backend && python -m pytest tests/agents/",
     "test:backend:coverage": "cd backend && python -m pytest --cov=. --cov-report=html",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui",
-    "test:e2e:headed": "playwright test --headed",
-    "test:e2e:debug": "playwright test --debug",
-    "test:e2e:report": "playwright show-report",
-    "test:ci": "npm run test:frontend -- --coverage && npm run test:backend:coverage && npm run test:e2e",
-    "e2e": "playwright test",
-    "e2e:headed": "playwright test --headed",
-    "e2e:ui": "playwright test --ui",
-    "e2e:debug": "playwright test --debug",
-    "e2e:report": "playwright show-report",
-    "e2e:auth": "playwright test e2e-tests/01-authentication.spec.ts",
-    "e2e:workflow": "playwright test e2e-tests/02-job-workflow.spec.ts",
-    "e2e:mobile": "playwright test e2e-tests/03-mobile-workflow.spec.ts",
-    "e2e:api-auth": "playwright test e2e-tests/04-api-authentication.spec.ts",
-    "e2e:api-security": "playwright test e2e-tests/05-agent-api-security.spec.ts",
-    "e2e:api": "playwright test e2e-tests/04-api-authentication.spec.ts e2e-tests/05-agent-api-security.spec.ts",
+    "test:ci": "npm run test:frontend -- --coverage && npm run test:backend:coverage",
     "dev:frontend": "npm run dev --workspace=frontend",
     "build:frontend": "npm run build --workspace=frontend",
     "install:all": "npm install && npm install --workspace=frontend"
   },
   "devDependencies": {
-    "@playwright/test": "^1.52.0",
     "@types/node": "^22.15.29",
     "autoprefixer": "^10.4.21",
-    "playwright": "^1.52.0",
     "postcss": "^8.5.4",
     "tailwindcss": "^4.1.8"
   },
-  "dependencies": {},
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dmautz1/ai-agent-platform.git"

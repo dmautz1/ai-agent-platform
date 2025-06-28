@@ -22,52 +22,113 @@ Authorization: Bearer <your-jwt-token>
 
 ## Response Format
 
-All API responses follow a consistent format:
+All API responses follow a consistent `ApiResponse<T>` format for standardized client handling:
 
-### Success Response
-```json
-{
-  "success": true,
-  "message": "Operation successful",
-  "timestamp": "2024-01-01T10:00:00Z",
-  // ... additional response data
+### ApiResponse Structure
+```typescript
+interface ApiResponse<T> {
+  success: boolean;           // Whether the request was successful
+  result: T | null;          // The response data (null for errors)
+  message: string | null;    // Human-readable message
+  error: string | null;      // Error message (null for success)
+  metadata: object | null;   // Additional response metadata
 }
 ```
 
-### Error Response
+### Success Response Example
+```json
+{
+  "success": true,
+  "result": {
+    "id": "123",
+    "status": "completed",
+    "data": "..." 
+  },
+  "message": "Operation completed successfully",
+  "error": null,
+  "metadata": {
+    "timestamp": "2024-01-01T10:00:00Z",
+    "version": "1.0",
+    "execution_time": 0.123
+  }
+}
+```
+
+### Error Response Example
 ```json
 {
   "success": false,
-  "message": "Error description",
-  "error_code": "ERROR_CODE",
-  "details": {
-    "field": ["Validation error message"]
-  },
-  "timestamp": "2024-01-01T10:00:00Z"
+  "result": null,
+  "message": "Operation failed",
+  "error": "Invalid input parameters",
+  "metadata": {
+    "error_code": "VALIDATION_ERROR",
+    "timestamp": "2024-01-01T10:00:00Z",
+    "request_id": "req_123"
+  }
+}
+```
+
+### Validation Error Response
+For input validation failures, the error response includes detailed validation information:
+
+```json
+{
+  "success": false,
+  "result": null,
+  "message": "Validation failed with 2 errors",
+  "error": "name: field required; email: field required",
+  "metadata": {
+    "error_type": "validation_error",
+    "error_count": 2,
+    "validation_errors": [
+      {
+        "loc": ["name"],
+        "msg": "field required",
+        "type": "value_error.missing"
+      },
+      {
+        "loc": ["email"],
+        "msg": "field required", 
+        "type": "value_error.missing"
+      }
+    ],
+    "timestamp": "2024-01-01T10:00:00Z"
+  }
 }
 ```
 
 ### Agent-Specific Errors
-The framework includes specialized error handling for agent-related issues:
+Agent-related errors are wrapped in the same ApiResponse format:
 
 ```json
 {
-  "error": "AgentNotFoundError",
-  "message": "Agent 'unknown_agent' not found",
-  "status_code": 404,
-  "agent_identifier": "unknown_agent",
-  "suggestion": "Check available agents using GET /agents endpoint"
+  "success": false,
+  "result": null,
+  "message": "Agent operation failed",
+  "error": "Agent 'unknown_agent' not found",
+  "metadata": {
+    "error_code": "AGENT_NOT_FOUND",
+    "agent_identifier": "unknown_agent",
+    "suggestion": "Check available agents using GET /agents endpoint",
+    "timestamp": "2024-01-01T10:00:00Z"
+  }
 }
 ```
 
 ```json
 {
-  "error": "AgentDisabledError", 
-  "message": "Agent 'disabled_agent' is disabled and not available for use",
-  "status_code": 400,
-  "agent_identifier": "disabled_agent",
-  "lifecycle_state": "disabled",
-  "suggestion": "Agent is not enabled or has load errors. Check agent status or contact administrator."
+  "success": false,
+  "result": null,
+  "message": "Agent unavailable",
+  "error": "Agent 'disabled_agent' is disabled and not available for use",
+  "metadata": {
+    "error_code": "AGENT_DISABLED",
+    "agent_identifier": "disabled_agent",
+    "lifecycle_state": "disabled",
+    "suggestion": "Agent is not enabled or has load errors. Check agent status or contact administrator.",
+    "timestamp": "2024-01-01T10:00:00Z"
+  }
 }
 ```
 
@@ -105,22 +166,31 @@ GET /health
 **Response:**
 ```json
 {
-  "status": "healthy",
-  "version": "1.0.0",
-  "environment": "development",
-  "framework_version": "1.0",
-  "cors_origins": 3,
-  "debug": true,
-  "agent_status": {
-    "total_agents": 3,
-    "enabled_agents": 2,
-    "disabled_agents": 1,
-    "current_environment": "dev"
+  "success": true,
+  "result": {
+    "status": "healthy",
+    "version": "1.0.0",
+    "environment": "development",
+    "framework_version": "1.0",
+    "cors_origins": 3,
+    "debug": true,
+    "agent_status": {
+      "total_agents": 3,
+      "enabled_agents": 2,
+      "disabled_agents": 1,
+      "current_environment": "dev"
+    },
+    "timestamp": "2024-01-01T10:00:00Z",
+    "performance_metrics": {
+      "total_operations": 1250,
+      "average_response_time": 0.25
+    }
   },
-  "timestamp": "2024-01-01T10:00:00Z",
-  "performance_metrics": {
-    "total_operations": 1250,
-    "average_response_time": 0.25
+  "message": "System health check completed",
+  "error": null,
+  "metadata": {
+    "endpoint": "health_check",
+    "response_time_ms": 5
   }
 }
 ```
@@ -137,13 +207,21 @@ GET /
 **Response:**
 ```json
 {
-  "message": "AI Agent Platform v1.0 is running",
-  "status": "healthy",
-  "version": "1.0.0",
-  "environment": "development",
-  "framework_version": "1.0",
-  "agent_framework": "self-contained",
-  "timestamp": "2024-01-01T10:00:00Z"
+  "success": true,
+  "result": {
+    "message": "AI Agent Platform v1.0 is running",
+    "status": "healthy",
+    "version": "1.0.0",
+    "environment": "development",
+    "framework_version": "1.0",
+    "agent_framework": "self-contained",
+    "timestamp": "2024-01-01T10:00:00Z"
+  },
+  "message": "Platform status retrieved successfully",
+  "error": null,
+  "metadata": {
+    "endpoint": "root_status"
+  }
 }
 ```
 
@@ -159,11 +237,20 @@ GET /cors-info
 **Response:**
 ```json
 {
-  "cors_origins": ["http://localhost:5173", "http://localhost:3000"],
-  "environment": "development",
-  "allow_credentials": true,
-  "max_age": 86400,
-  "message": "CORS configuration (development mode)"
+  "success": true,
+  "result": {
+    "cors_origins": ["http://localhost:5173", "http://localhost:3000"],
+    "environment": "development",
+    "allow_credentials": true,
+    "max_age": 86400,
+    "message": "CORS configuration (development mode)"
+  },
+  "message": "CORS configuration retrieved successfully",
+  "error": null,
+  "metadata": {
+    "endpoint": "cors_info",
+    "available_in": "development"
+  }
 }
 ```
 
@@ -171,7 +258,7 @@ GET /cors-info
 
 #### Get Current User Info
 ```http
-GET /auth/me
+GET /auth/user
 ```
 
 **Description:** Get information about the currently authenticated user.
@@ -181,18 +268,41 @@ GET /auth/me
 **Response:**
 ```json
 {
-  "user": {
-    "id": "123e4567-e89b-12d3-a456-426614174000",
-    "email": "user@example.com",
-    "metadata": {
-      "name": "John Doe"
-    },
-    "app_metadata": {
-      "roles": ["user"]
-    },
-    "created_at": "2024-01-01T00:00:00Z"
+  "success": true,
+  "result": {
+    "user": {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "email": "user@example.com",
+      "metadata": {
+        "name": "John Doe"
+      },
+      "app_metadata": {
+        "roles": ["user"]
+      },
+      "created_at": "2024-01-01T00:00:00Z"
+    }
   },
-  "message": "Authentication successful"
+  "message": "User information retrieved successfully",
+  "error": null,
+  "metadata": {
+    "endpoint": "user_info",
+    "authenticated": true
+  }
+}
+```
+
+**Error Response (Unauthorized):**
+```json
+{
+  "success": false,
+  "result": null,
+  "message": "Authentication required",
+  "error": "Missing or invalid authentication token",
+  "metadata": {
+    "error_code": "AUTHENTICATION_REQUIRED",
+    "status_code": 401,
+    "timestamp": "2024-01-01T10:00:00Z"
+  }
 }
 ```
 
@@ -212,29 +322,38 @@ GET /agents
 **Response Example:**
 ```json
 {
-  "status": "success",
-  "framework_version": "1.0",
-  "discovery_system": "agent_discovery",
-  "agents": {
-    "simple_prompt": {
-      "identifier": "simple_prompt",
-      "name": "Simple Prompt Agent",
-      "description": "A simple agent that processes text prompts using any available LLM provider",
-      "class_name": "SimplePromptAgent",
-      "lifecycle_state": "enabled",
-      "supported_environments": ["dev", "prod"],
-      "version": "1.0.0",
-      "enabled": true,
-      "has_error": false,
-      "created_at": "2024-01-01T00:00:00Z",
-      "last_updated": "2024-01-01T00:00:00Z"
-    }
+  "success": true,
+  "result": {
+    "agents": [
+      {
+        "identifier": "simple_prompt",
+        "name": "Simple Prompt Agent",
+        "description": "A simple agent that processes text prompts using any available LLM provider",
+        "class_name": "SimplePromptAgent",
+        "lifecycle_state": "enabled",
+        "supported_environments": ["dev", "prod"],
+        "version": "1.0.0",
+        "enabled": true,
+        "has_error": false,
+        "created_at": "2024-01-01T00:00:00Z",
+        "last_updated": "2024-01-01T00:00:00Z"
+      }
+    ],
+    "summary": {
+      "total_agents": 2,
+      "enabled_agents": 2,
+      "disabled_agents": 0,
+      "current_environment": "development"
+    },
+    "framework_version": "1.0",
+    "discovery_system": "agent_discovery"
   },
-  "summary": {
-    "total_agents": 2,
-    "enabled_agents": 2,
-    "disabled_agents": 0,
-    "current_environment": "development"
+  "message": "Agents retrieved successfully",
+  "error": null,
+  "metadata": {
+    "endpoint": "agent_list",
+    "total_count": 2,
+    "loaded_count": 2
   }
 }
 ```
@@ -254,47 +373,46 @@ GET /agents/{agent_identifier}
 **Response Example:**
 ```json
 {
-  "status": "success",
-  "agent": {
-    "identifier": "simple_prompt",
-    "name": "Simple Prompt Agent",
+  "success": true,
+  "result": {
+    "agent_name": "simple_prompt",
+    "display_name": "Simple Prompt Agent",
     "description": "A simple agent that processes text prompts using any available LLM provider",
     "class_name": "SimplePromptAgent",
-    "module_path": "agents.simple_prompt_agent",
     "lifecycle_state": "enabled",
     "supported_environments": ["dev", "prod"],
     "version": "1.0.0",
     "enabled": true,
     "has_error": false,
+    "runtime_info": {
+      "loaded": true,
+      "last_execution": "2024-01-01T09:30:00Z",
+      "total_executions": 125
+    },
     "created_at": "2024-01-01T00:00:00Z",
-    "last_updated": "2024-01-01T00:00:00Z",
-    "instance_available": true
+    "last_updated": "2024-01-01T00:00:00Z"
+  },
+  "message": "Agent information retrieved successfully", 
+  "error": null,
+  "metadata": {
+    "endpoint": "agent_info",
+    "agent_identifier": "simple_prompt"
   }
 }
 ```
 
-#### Get Agent Health
-```http
-GET /agents/{agent_identifier}/health
-```
-
-**Description:** Check the health status of a specific agent (requires agent to be loaded).
-
-**Authentication:** None required
-
-**Path Parameters:**
-- `agent_identifier` (string): Identifier of the agent
-
-**Response Example:**
+**Error Response (Agent Not Found):**
 ```json
 {
-  "status": "success",
-  "health": {
-    "agent_identifier": "simple_prompt",
-    "agent_name": "Simple Prompt Agent",
-    "is_healthy": true,
-    "status": "ready",
-    "last_check": "2024-01-01T12:00:00Z"
+  "success": false,
+  "result": null,
+  "message": "Agent not found",
+  "error": "Agent 'unknown_agent' not found",
+  "metadata": {
+    "error_code": "AGENT_NOT_FOUND",
+    "agent_identifier": "unknown_agent",
+    "suggestion": "Check available agents using GET /agents endpoint",
+    "timestamp": "2024-01-01T10:00:00Z"
   }
 }
 ```
@@ -304,7 +422,7 @@ GET /agents/{agent_identifier}/health
 GET /agents/{agent_identifier}/schema
 ```
 
-**Description:** Get job data schema for an agent to enable dynamic form generation.
+**Description:** Get the Pydantic schema for the agent's job data structure.
 
 **Authentication:** None required
 
@@ -314,29 +432,47 @@ GET /agents/{agent_identifier}/schema
 **Response Example:**
 ```json
 {
-  "status": "success",
-  "agent_identifier": "simple_prompt",
-  "agent_name": "Simple Prompt Agent",
-  "description": "A simple agent that processes text prompts using any available LLM provider",
-  "instance_available": true,
-  "available_models": ["SimplePromptJobData"],
-  "schemas": {
-    "SimplePromptJobData": {
-      "model_name": "SimplePromptJobData",
-      "model_class": "SimplePromptJobData",
-      "title": "SimplePromptJobData",
-      "description": "Job data for simple prompt processing",
+  "success": true,
+  "result": {
+    "schema": {
       "type": "object",
       "properties": {
         "prompt": {
-          "title": "Prompt",
-          "description": "The text prompt to process",
           "type": "string",
-          "form_field_type": "textarea"
+          "title": "Prompt",
+          "description": "The text prompt to process"
+        },
+        "max_tokens": {
+          "type": "integer",
+          "title": "Max Tokens",
+          "default": 1000,
+          "minimum": 1,
+          "maximum": 4000
+        },
+        "temperature": {
+          "type": "number",
+          "title": "Temperature",
+          "default": 0.7,
+          "minimum": 0.0,
+          "maximum": 2.0
         }
       },
       "required": ["prompt"]
-    }
+    },
+    "ui_schema": {
+      "prompt": {
+        "ui:widget": "textarea",
+        "ui:placeholder": "Enter your prompt here..."
+      }
+    },
+    "agent_identifier": "simple_prompt"
+  },
+  "message": "Agent schema retrieved successfully",
+  "error": null,
+  "metadata": {
+    "endpoint": "agent_schema",
+    "agent_identifier": "simple_prompt",
+    "schema_version": "1.0"
   }
 }
 ```

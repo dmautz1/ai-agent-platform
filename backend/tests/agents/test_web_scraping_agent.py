@@ -467,9 +467,11 @@ class TestWebScrapingAgentEndpoints:
             
             response = await self.agent.scrape_website(request_data, self.mock_user)
             
-            assert response['status'] == 'success'
-            assert response['data']['url'] == 'https://example.com'
-            assert response['result_format'] == 'json'
+            # Updated for ApiResponse format
+            assert response.success is True
+            assert response.result['data']['url'] == 'https://example.com'
+            assert response.result['result_format'] == 'json'
+            assert response.error is None
     
     @pytest.mark.asyncio
     async def test_scrape_website_endpoint_failure(self):
@@ -489,8 +491,10 @@ class TestWebScrapingAgentEndpoints:
             
             response = await self.agent.scrape_website(request_data, self.mock_user)
             
-            assert response['status'] == 'error'
-            assert response['error'] == "Failed to scrape website"
+            # Updated for ApiResponse format
+            assert response.success is False
+            assert response.result is None
+            assert "Failed to scrape website" in response.error
     
     @pytest.mark.asyncio
     async def test_diagnose_ai_analysis_endpoint(self):
@@ -515,9 +519,11 @@ class TestWebScrapingAgentEndpoints:
             
             response = await self.agent.diagnose_ai_analysis(request_data, self.mock_user)
             
-            assert response['status'] == 'success'
-            assert response['analysis_result']['summary'] == 'Test summary'
-            assert response['diagnostic'] == 'ai_analysis_successful'
+            # Updated for ApiResponse format
+            assert response.success is True
+            assert response.result['analysis_result']['summary'] == 'Test summary'
+            assert response.metadata['diagnostic'] == 'ai_analysis_successful'
+            assert response.error is None
     
     @pytest.mark.asyncio
     async def test_get_agent_info_endpoint(self):
@@ -527,11 +533,14 @@ class TestWebScrapingAgentEndpoints:
             
             response = await self.agent.get_agent_info()
             
-            assert response['name'] == 'web_scraping'
-            assert 'description' in response
-            assert 'capabilities' in response
-            assert 'google_ai_service' in response
-            assert response['status'] == 'available'
+            # Updated for ApiResponse format
+            assert response.success is True
+            assert response.result['name'] == 'web_scraping'
+            assert 'description' in response.result
+            assert 'capabilities' in response.result
+            assert 'google_ai_service' in response.result
+            assert response.result['status'] == 'available'
+            assert response.error is None
 
 
 class TestWebScrapingAgentIntegration:

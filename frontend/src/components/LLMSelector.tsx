@@ -82,10 +82,12 @@ export function LLMSelector({
         for (const providerName of providerNames) {
           try {
             const response = await apiClient.get(`/${providerName}/models`);
-            if (response.data.success && response.data.result && response.data.result.models) {
+            // Safely access response data with proper null checks
+            const responseData = response?.data;
+            if (responseData?.success && responseData?.result && responseData?.result?.models) {
               // Map endpoint names to internal provider names
               const internalName = providerName === 'google-ai' ? 'google' : providerName;
-              const providerData = response.data.result;
+              const providerData = responseData.result;
               
               providers[internalName] = {
                 provider: internalName,
@@ -95,6 +97,17 @@ export function LLMSelector({
                 available_models: providerData.models || []
               };
               availableProviders.push(internalName);
+            } else {
+              // Response structure not as expected - mark as failed
+              const internalName = providerName === 'google-ai' ? 'google' : providerName;
+              providers[internalName] = {
+                provider: internalName,
+                status: 'failed',
+                service_name: getServiceDisplayName(providerName),
+                default_model: '',
+                available_models: []
+              };
+              console.warn(`Provider ${providerName} returned unexpected response structure:`, responseData);
             }
           } catch (err) {
             // Provider failed to load - mark as unavailable

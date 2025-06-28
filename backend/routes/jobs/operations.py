@@ -29,7 +29,7 @@ router = APIRouter(tags=["job-operations"])
 
 # Job Operations Response Types
 JobRetryResponse = Dict[str, Union[str, bool]]
-JobRerunResponse = Dict[str, Union[str, Dict[str, Any]]]
+JobRerunResponse = Dict[str, Union[str, bool, Dict[str, Any]]]
 JobCancelResponse = Dict[str, str]
 JobPriorityResponse = Dict[str, Union[str, int]]
 

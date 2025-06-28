@@ -71,22 +71,22 @@ async def list_jobs(
         if agent_identifier:
             filtered_jobs = [job for job in filtered_jobs if job.get("agent_identifier") == agent_identifier]
         
-        # Convert to JobResponse format
+        # Convert to JobResponse format as dictionaries
         job_responses = []
         for job in filtered_jobs:
-            job_responses.append(JobResponse(
-                id=job["id"],
-                status=job["status"],
-                agent_identifier=job.get("agent_identifier", "unknown"),
-                data=job.get("job_data", job.get("data", {})),
-                result=job.get("result"),
-                error_message=job.get("error_message"),
-                created_at=job["created_at"],
-                updated_at=job["updated_at"],
-                title=job.get("title"),
-                priority=job.get("priority", 5),
-                tags=job.get("tags", [])
-            ))
+            job_responses.append({
+                "id": job["id"],
+                "status": job["status"],
+                "agent_identifier": job.get("agent_identifier", "unknown"),
+                "data": job.get("job_data", job.get("data", {})),
+                "result": job.get("result"),
+                "error_message": job.get("error_message"),
+                "created_at": job["created_at"],
+                "updated_at": job["updated_at"],
+                "title": job.get("title"),
+                "priority": job.get("priority", 5),
+                "tags": job.get("tags", [])
+            })
         
         result_data = {
             "jobs": job_responses,

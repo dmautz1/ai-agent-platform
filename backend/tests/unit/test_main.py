@@ -17,8 +17,11 @@ def test_root_endpoint():
     response = client.get("/")
     assert response.status_code == 200
     data = response.json()
+    assert "success" in data
+    assert "result" in data
     assert "message" in data
-    assert "version" in data
+    assert data["success"] is True
+    assert "version" in data["result"]
 
 
 def test_health_check_endpoint():
@@ -26,9 +29,12 @@ def test_health_check_endpoint():
     response = client.get("/health")
     assert response.status_code == 200
     data = response.json()
-    assert "status" in data
-    assert "version" in data
-    assert "timestamp" in data
+    assert "success" in data
+    assert "result" in data
+    assert data["success"] is True
+    assert "status" in data["result"]
+    assert "version" in data["result"]
+    assert "timestamp" in data["result"]
     # Note: environment field not included in health endpoint, only in root endpoint
 
 
@@ -41,6 +47,9 @@ def test_public_job_stats_endpoint():
         
         response = client.get("/stats")
         assert response.status_code == 200
+        data = response.json()
+        assert "success" in data
+        assert "result" in data
 
 
 def test_cors_info_endpoint():
@@ -48,10 +57,13 @@ def test_cors_info_endpoint():
     response = client.get("/cors-info")
     assert response.status_code == 200
     data = response.json()
-    assert "cors_origins" in data
-    assert "environment" in data
-    assert "allow_credentials" in data
-    assert "max_age" in data
+    assert "success" in data
+    assert "result" in data
+    assert data["success"] is True
+    assert "cors_origins" in data["result"]
+    assert "environment" in data["result"]
+    assert "allow_credentials" in data["result"]
+    assert "max_age" in data["result"]
     # Note: cors_settings field doesn't exist, individual fields are returned instead
 
 
@@ -81,12 +93,12 @@ def test_auth_me_endpoint_with_valid_token(mock_get_current_user):
         assert response.status_code == 200
         data = response.json()
         
-        # Check the response structure matches the auth route format
         assert "success" in data
+        assert "result" in data
         assert "message" in data
-        assert "data" in data
-        assert "user" in data["data"]
-        user_data = data["data"]["user"]
+        assert data["success"] is True
+        assert "user" in data["result"]
+        user_data = data["result"]["user"]
         assert user_data["id"] == "test-user"
         assert user_data["email"] == "test@example.com"
     finally:
@@ -124,8 +136,8 @@ def test_schedule_job_with_valid_token(mock_get_current_user):
         # If it's a 404, check it's the expected agent not found error
         if response.status_code == 404:
             response_data = response.json()
-            assert "agent" in response_data.get("detail", {}).get("message", "").lower() or \
-                   "not found" in response_data.get("detail", "").lower()
+            error_message = response_data.get("error", "") or response_data.get("detail", {}).get("message", "") or response_data.get("detail", "")
+            assert "agent" in error_message.lower() or "not found" in error_message.lower()
     finally:
         app.dependency_overrides.clear()
 
@@ -195,16 +207,13 @@ def test_list_agents_endpoint_success(mock_get_discovery):
     assert response.status_code == 200
     data = response.json()
     
-    # The API returns a detailed object with agents list and metadata
     assert isinstance(data, dict)
-    assert "agents" in data
-    assert "total_count" in data
-    assert "loaded_count" in data
-    assert "discovery_info" in data  # This is the actual field name, not discovery_system
-    assert "message" in data
+    assert "success" in data
+    assert "result" in data
+    assert data["success"] is True
+    assert "agents" in data["result"]
     
-    # Check that agents are included in the response
-    agents_data = data["agents"]
+    agents_data = data["result"]["agents"]
     assert isinstance(agents_data, list)
 
 
@@ -242,7 +251,11 @@ def test_get_agent_info_endpoint_success(mock_get_discovery):
         # If successful, verify response structure
         if response.status_code == 200:
             data = response.json()
-            assert "identifier" in data or "agent_id" in data
+            assert "success" in data
+            assert "result" in data
+            assert data["success"] is True
+            result_data = data["result"]
+            assert "agent_name" in result_data or "identifier" in result_data
 
 
 @patch('main.get_agent_discovery_system')
@@ -253,7 +266,18 @@ def test_get_agent_info_endpoint_not_found(mock_get_discovery):
     mock_get_discovery.return_value = mock_discovery
     
     response = client.get("/agents/nonexistent")
-    assert response.status_code == 404
+    # Updated for ApiResponse format - errors are now returned as 200 status with error in response body
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Verify ApiResponse structure for error case
+    assert "success" in data
+    assert "result" in data
+    assert "error" in data
+    assert data["success"] is False
+    assert data["result"] is None
+    assert data["error"] is not None
+    assert "not found" in data["error"].lower() or "nonexistent" in data["error"].lower()
 
 
 def test_get_agent_schema_endpoint_success():

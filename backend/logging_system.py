@@ -70,7 +70,7 @@ class StructuredLogger:
     def warning(self, message: str, **kwargs):
         """Log warning message with structured data"""
         log_data = self._format_message(message, kwargs)
-        self.logger.warning(json.dumps(log_data))
+        self.logger.warning(json.dumps(log_data, default=self._json_default))
     
     def error(self, message: str, exception: Optional[Exception] = None, **kwargs):
         """Log error message with structured data and optional exception"""
@@ -83,7 +83,7 @@ class StructuredLogger:
                 'traceback': traceback.format_exc()
             }
         
-        self.logger.error(json.dumps(log_data))
+        self.logger.error(json.dumps(log_data, default=self._json_default))
     
     def critical(self, message: str, exception: Optional[Exception] = None, **kwargs):
         """Log critical message with structured data and optional exception"""
@@ -96,7 +96,19 @@ class StructuredLogger:
                 'traceback': traceback.format_exc()
             }
         
-        self.logger.critical(json.dumps(log_data))
+        self.logger.critical(json.dumps(log_data, default=self._json_default))
+
+    def _json_default(self, obj):
+        """JSON serializer for objects not serializable by default json code"""
+        if isinstance(obj, Exception):
+            return {
+                'type': type(obj).__name__,
+                'message': str(obj),
+                'args': obj.args
+            }
+        if hasattr(obj, '__dict__'):
+            return obj.__dict__
+        return str(obj)
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Middleware for logging HTTP requests and responses"""

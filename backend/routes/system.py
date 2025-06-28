@@ -31,7 +31,7 @@ router = APIRouter(tags=["system"])
 
 # System Response Types
 HealthCheckResponse = Dict[str, Union[str, bool, int]]
-SystemStatsResponse = Dict[str, Union[str, int, float]]
+SystemStatsResponse = Dict[str, Union[str, int, float, Dict[str, int]]]
 ConfigResponse = Dict[str, Any]
 
 @router.get("/", response_model=ApiResponse[HealthCheckResponse])

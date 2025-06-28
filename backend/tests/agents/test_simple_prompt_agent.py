@@ -85,12 +85,15 @@ class TestSimplePromptAgent:
         with patch.object(self.agent.llm_service, 'get_available_providers') as mock_providers:
             mock_providers.return_value = ['openai', 'anthropic']
             
-            info = await self.agent.get_agent_info()
+            response = await self.agent.get_agent_info()
             
-            assert info['name'] == 'simple_prompt'
-            assert 'description' in info
-            assert 'available_providers' in info
-            assert 'default_provider' in info
+            # Updated for ApiResponse format since method is decorated with @endpoint
+            assert response.success is True
+            assert response.result['name'] == 'simple_prompt'
+            assert 'description' in response.result
+            assert 'available_providers' in response.result
+            assert 'default_provider' in response.result
+            assert response.error is None
     
     @pytest.mark.asyncio
     async def test_get_providers_info(self):
@@ -101,10 +104,13 @@ class TestSimplePromptAgent:
                 'default_provider': 'google'
             }
             
-            info = await self.agent.get_providers_info()
+            response = await self.agent.get_providers_info()
             
-            assert info['available_providers'] == ['openai', 'anthropic', 'google']
-            assert info['default_provider'] == 'google'
+            # Updated for ApiResponse format since method is decorated with @endpoint
+            assert response.success is True
+            assert response.result['available_providers'] == ['openai', 'anthropic', 'google']
+            assert response.result['default_provider'] == 'google'
+            assert response.error is None
             mock_providers.assert_called_once()
     
     @pytest.mark.asyncio
@@ -117,11 +123,14 @@ class TestSimplePromptAgent:
                 'total_services': 5
             }
             
-            health = await self.agent.get_health_status()
+            response = await self.agent.get_health_status()
             
-            assert health['overall_status'] == 'healthy'
-            assert health['loaded_services'] == 3
-            assert health['total_services'] == 5
+            # Updated for ApiResponse format since method is decorated with @endpoint
+            assert response.success is True
+            assert response.result['overall_status'] == 'healthy'
+            assert response.result['loaded_services'] == 3
+            assert response.result['total_services'] == 5
+            assert response.error is None
             mock_health.assert_called_once()
     
     @pytest.mark.asyncio
@@ -225,10 +234,11 @@ class TestSimplePromptAgentEndpoints:
             
             response = await self.agent.process_prompt(request_data, self.mock_user)
             
-            assert response['status'] == 'success'
-            assert response['result'] == "Hello! How can I help?"
-            assert response['result_format'] == 'markdown'
-            assert 'metadata' in response
+            assert response.success is True
+            assert response.result["response"] == "Hello! How can I help?"
+            assert response.result["result_format"] == 'markdown'
+            assert 'metadata' in response.result
+            assert response.error is None
     
     @pytest.mark.asyncio
     async def test_process_prompt_endpoint_failure(self):
@@ -242,8 +252,9 @@ class TestSimplePromptAgentEndpoints:
             
             response = await self.agent.process_prompt(request_data, self.mock_user)
             
-            assert response['status'] == 'error'
-            assert "Service unavailable" in response['error']
+            assert response.success is False
+            assert response.result is None
+            assert "Service unavailable" in response.error
     
     @pytest.mark.asyncio
     async def test_get_agent_info_endpoint(self):
@@ -253,9 +264,11 @@ class TestSimplePromptAgentEndpoints:
             
             response = await self.agent.get_agent_info()
             
-            assert response['name'] == 'simple_prompt'
-            assert 'description' in response
-            assert 'available_providers' in response
+            assert response.success is True
+            assert response.result['name'] == 'simple_prompt'
+            assert 'description' in response.result
+            assert 'available_providers' in response.result
+            assert response.error is None
     
     @pytest.mark.asyncio
     async def test_get_providers_info_endpoint(self):
@@ -268,8 +281,10 @@ class TestSimplePromptAgentEndpoints:
             
             response = await self.agent.get_providers_info()
             
-            assert response['available_providers'] == ['openai', 'anthropic']
-            assert response['default_provider'] == 'openai'
+            assert response.success is True
+            assert response.result['available_providers'] == ['openai', 'anthropic']
+            assert response.result['default_provider'] == 'openai'
+            assert response.error is None
     
     @pytest.mark.asyncio
     async def test_get_health_status_endpoint(self):
@@ -282,8 +297,10 @@ class TestSimplePromptAgentEndpoints:
             
             response = await self.agent.get_health_status()
             
-            assert response['overall_status'] == 'healthy'
-            assert response['loaded_services'] == 3
+            assert response.success is True
+            assert response.result['overall_status'] == 'healthy'
+            assert response.result['loaded_services'] == 3
+            assert response.error is None
     
     @pytest.mark.asyncio
     async def test_test_all_connections_endpoint(self):
@@ -296,8 +313,10 @@ class TestSimplePromptAgentEndpoints:
             
             response = await self.agent.test_all_connections()
             
-            assert response['openai']['status'] == 'connected'
-            assert response['anthropic']['status'] == 'connected'
+            assert response.success is True
+            assert response.result['openai']['status'] == 'connected'
+            assert response.result['anthropic']['status'] == 'connected'
+            assert response.error is None
 
 
 class TestSimplePromptAgentIntegration:

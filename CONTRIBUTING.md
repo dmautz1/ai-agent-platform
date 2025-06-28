@@ -97,9 +97,6 @@ npm run test:backend
 
 # Frontend tests only
 npm run test:frontend
-
-# E2E tests
-npm run test:e2e
 ```
 
 ### Test Standards

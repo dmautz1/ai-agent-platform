@@ -250,13 +250,33 @@ class TestEndpointWrapper:
         self.mock_agent.name = "test_agent"
         self.mock_request = Mock(spec=Request)
         self.mock_user = {"id": "user123", "email": "test@example.com"}
+        
+        # Set up the mock agent's error_response method to return proper ApiResponse objects
+        def mock_error_response(error_message, message=None, **metadata):
+            from models import ApiResponse
+            return ApiResponse(
+                success=False,
+                result=None,
+                message=message or "Agent operation failed",
+                error=error_message,
+                metadata=metadata
+            )
+        
+        self.mock_agent.error_response = mock_error_response
     
     @pytest.mark.asyncio
     async def test_create_endpoint_wrapper_sync_method(self):
         """Test endpoint wrapper with synchronous method"""
         
         def sync_method(self, request_data, user):
-            return {"result": "success", "data": request_data}
+            from models import ApiResponse
+            return ApiResponse(
+                success=True,
+                result={"result": "success", "data": request_data},
+                message="Operation completed successfully",
+                error=None,
+                metadata=None
+            )
         
         endpoint_info = {
             'path': '/test',
@@ -270,15 +290,25 @@ class TestEndpointWrapper:
         request_data = {"input": "test"}
         result = await wrapper(self.mock_request, request_data, self.mock_user)
         
-        assert result["result"] == "success"
-        assert result["data"] == request_data
+        # Updated for ApiResponse format
+        assert result.success is True
+        assert result.result["result"] == "success"
+        assert result.result["data"] == request_data
+        assert result.error is None
     
     @pytest.mark.asyncio
     async def test_create_endpoint_wrapper_async_method(self):
         """Test endpoint wrapper with asynchronous method"""
         
         async def async_method(self, request_data, user):
-            return {"result": "async_success", "user_id": user["id"]}
+            from models import ApiResponse
+            return ApiResponse(
+                success=True,
+                result={"result": "async_success", "user_id": user["id"]},
+                message="Async operation completed successfully",
+                error=None,
+                metadata=None
+            )
         
         endpoint_info = {
             'path': '/async-test',
@@ -292,38 +322,65 @@ class TestEndpointWrapper:
         request_data = {"input": "test"}
         result = await wrapper(self.mock_request, request_data, self.mock_user)
         
-        assert result["result"] == "async_success"
-        assert result["user_id"] == "user123"
+        # Updated for ApiResponse format
+        assert result.success is True
+        assert result.result["result"] == "async_success"
+        assert result.result["user_id"] == "user123"
+        assert result.error is None
     
     @pytest.mark.asyncio
     async def test_create_endpoint_wrapper_method_signature_matching(self):
         """Test that wrapper correctly matches method signatures"""
         
         def method_with_request(self, request):
-            return {"has_request": True}
+            from models import ApiResponse
+            return ApiResponse(
+                success=True,
+                result={"has_request": True},
+                message="Request method completed",
+                error=None,
+                metadata=None
+            )
         
         def method_with_user_only(self, user):
-            return {"user_id": user["id"]}
+            from models import ApiResponse
+            return ApiResponse(
+                success=True,
+                result={"user_id": user["id"]},
+                message="User method completed",
+                error=None,
+                metadata=None
+            )
         
         def method_no_params(self):
-            return {"no_params": True}
+            from models import ApiResponse
+            return ApiResponse(
+                success=True,
+                result={"no_params": True},
+                message="No params method completed",
+                error=None,
+                metadata=None
+            )
         
         endpoint_info = {'path': '/test', 'methods': ['POST'], 'auth_required': True, 'public': False}
         
-        # Test request parameter
+        # Test request parameter - Updated for ApiResponse format
         wrapper1 = create_endpoint_wrapper(self.mock_agent, method_with_request, endpoint_info)
         result1 = await wrapper1(self.mock_request, None, self.mock_user)
-        assert result1["has_request"] is True
+        assert result1.success is True
+        assert result1.result["has_request"] is True
         
-        # Test user parameter only
+        # Test user parameter only - Updated for ApiResponse format
         wrapper2 = create_endpoint_wrapper(self.mock_agent, method_with_user_only, endpoint_info)
         result2 = await wrapper2(self.mock_request, None, self.mock_user)
-        assert result2["user_id"] == "user123"
+        assert result2.success is True
+        assert result2.result["user_id"] == "user123"
         
-        # Test no parameters
+        # Test no parameters - Updated for ApiResponse format
         wrapper3 = create_endpoint_wrapper(self.mock_agent, method_no_params, endpoint_info)
         result3 = await wrapper3(self.mock_request, None, self.mock_user)
-        assert result3["no_params"] is True
+        assert result3.success is True
+        assert result3.result["no_params"] is True
     
     @pytest.mark.asyncio
     async def test_create_endpoint_wrapper_error_handling(self):
@@ -335,27 +392,35 @@ class TestEndpointWrapper:
         endpoint_info = {'path': '/test', 'methods': ['POST'], 'auth_required': True, 'public': False}
         wrapper = create_endpoint_wrapper(self.mock_agent, failing_method, endpoint_info)
         
-        with pytest.raises(HTTPException) as exc_info:
-            await wrapper(self.mock_request, {}, self.mock_user)
+        # Updated for ApiResponse format - errors are now returned as ApiResponse objects
+        result = await wrapper(self.mock_request, {}, self.mock_user)
         
-        assert exc_info.value.status_code == 500
-        assert "Agent operation failed" in str(exc_info.value.detail)
+        assert result.success is False
+        assert result.result is None
+        assert "Something went wrong" in result.error
+        assert result.metadata is not None
+        assert "execution_time" in result.metadata
     
     @pytest.mark.asyncio
     async def test_create_endpoint_wrapper_http_exception_passthrough(self):
-        """Test that HTTPExceptions are passed through unchanged"""
+        """Test that HTTPExceptions are converted to ApiResponse error format"""
         
         def method_with_http_error(self, request_data, user):
+            from fastapi import HTTPException
             raise HTTPException(status_code=400, detail="Bad request")
         
         endpoint_info = {'path': '/test', 'methods': ['POST'], 'auth_required': True, 'public': False}
         wrapper = create_endpoint_wrapper(self.mock_agent, method_with_http_error, endpoint_info)
         
-        with pytest.raises(HTTPException) as exc_info:
-            await wrapper(self.mock_request, {}, self.mock_user)
+        # Updated for ApiResponse format - HTTPExceptions are now converted to ApiResponse objects
+        result = await wrapper(self.mock_request, {}, self.mock_user)
         
-        assert exc_info.value.status_code == 400
-        assert exc_info.value.detail == "Bad request"
+        assert result.success is False
+        assert result.result is None
+        assert "Bad request" in result.error
+        assert result.metadata is not None
+        assert "status_code" in result.metadata
+        assert result.metadata["status_code"] == 400
 
 
 class TestUtilityFunctions:

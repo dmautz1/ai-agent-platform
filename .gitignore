@@ -406,17 +406,6 @@ htmlcov/
 # Jest
 jest_coverage/
 
-# Playwright
-test-results/
-playwright-report/
-playwright/.cache/
-
-# E2E test result files (regardless of location)
-e2e-test-results.json
-e2e-test-results.xml
-**/e2e-test-results.json
-**/e2e-test-results.xml
-
 # =============================================================================
 # BUILD & DEPLOYMENT
 # =============================================================================

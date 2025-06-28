@@ -298,6 +298,7 @@ class DatabaseClient:
         Returns:
             True if job was deleted, False if not found
         """
+        start_time = time.time()
         logger.info("Deleting job", job_id=job_id, user_id=user_id)
         
         try:
@@ -309,6 +310,7 @@ class DatabaseClient:
             response = query.execute()
             
             deleted_count = len(response.data) if response.data else 0
+            duration = time.time() - start_time
             
             if deleted_count > 0:
                 logger.info("Job deleted successfully", job_id=job_id)
@@ -335,6 +337,7 @@ class DatabaseClient:
         Returns:
             Dictionary containing job statistics
         """
+        start_time = time.time()
         logger.info("Retrieving job statistics", user_id=user_id)
         
         try:
@@ -361,6 +364,7 @@ class DatabaseClient:
                 "status_breakdown": status_counts
             }
             
+            duration = time.time() - start_time
             logger.info("Job statistics retrieved", user_id=user_id, total_jobs=total_jobs)
             db_logger.log_query("SELECT", "jobs", duration, rows_returned=total_jobs)
             
@@ -382,6 +386,7 @@ class DatabaseClient:
         Returns:
             Number of jobs deleted
         """
+        start_time = time.time()
         logger.info("Starting job cleanup", older_than_days=older_than_days)
         
         try:
@@ -397,6 +402,7 @@ class DatabaseClient:
             )
             
             deleted_count = len(response.data) if response.data else 0
+            duration = time.time() - start_time
             logger.info("Job cleanup completed", deleted_count=deleted_count, older_than_days=older_than_days)
             db_logger.log_query("DELETE", "jobs", duration, rows_affected=deleted_count)
             
@@ -431,13 +437,15 @@ async def check_database_health() -> Dict[str, Any]:
     Returns:
         Dictionary containing health status and metrics
     """
+    start_time = time.time()
     logger.info("Checking database health")
     
     try:
         # Simple query to test connection
         client = get_supabase_client()
         response = client.table("jobs").select("id", count="exact").limit(1).execute()
-    
+        
+        duration = time.time() - start_time
         health_status = {
             "status": "healthy",
             "connection_time_ms": round(duration * 1000, 2),

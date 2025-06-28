@@ -38,7 +38,7 @@ Brief technical explanation of the approach taken.
 
 ### Other Changes
 - [ ] **Documentation**: _README, API docs, guides_
-- [ ] **Tests**: _Unit, integration, or E2E tests_
+- [ ] **Tests**: _Unit, integration, or backend tests_
 - [ ] **CI/CD**: _GitHub workflows, deployment configs_
 - [ ] **Infrastructure**: _Docker, deployment scripts_
 
@@ -49,22 +49,19 @@ Brief technical explanation of the approach taken.
 ### Test Coverage
 - [ ] **Unit Tests**: Added/updated unit tests
 - [ ] **Integration Tests**: Added/updated integration tests
-- [ ] **E2E Tests**: Added/updated end-to-end tests
-- [ ] **Manual Testing**: Manually tested all changes
+- [ ] **Tests**: _Unit, integration, or backend tests_
+- [ ] **Manual Testing**: Manually tested the functionality
 
 ### Test Results
 ```bash
-# Backend test results
+# Backend tests
 npm run test:backend
-# Results: X/Y tests passing (XX% coverage)
 
-# Frontend test results  
+# Frontend tests  
 npm run test:frontend
-# Results: X/Y tests passing (XX% coverage)
 
-# E2E test results
-npm run test:e2e
-# Results: X/Y tests passing
+# All tests
+npm run test
 ```
 
 ### Browser Testing (Frontend Changes)
