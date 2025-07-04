@@ -2,6 +2,7 @@ import '@testing-library/jest-dom'
 import { expect, afterEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import * as matchers from '@testing-library/jest-dom/matchers'
+import React from 'react'
 
 // Extend Vitest expect with Jest DOM matchers
 expect.extend(matchers)
@@ -146,4 +147,50 @@ console.error = (...args: unknown[]) => {
     return
   }
   originalError.apply(console, args)
-} 
+}
+
+// Mock react-js-cron globally
+vi.mock('react-js-cron', () => ({
+  Cron: ({ value, setValue, disabled, className }: any) => (
+    React.createElement('div', { 'data-testid': 'mock-cron-picker', className },
+      React.createElement('input', {
+        'data-testid': 'cron-input',
+        value: value || '',
+        onChange: (e: any) => setValue?.(e.target.value),
+        disabled,
+        placeholder: 'Mock cron input'
+      })
+    )
+  )
+}))
+
+// Mock react-router-dom globally
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, any>
+  return {
+    ...actual,
+    BrowserRouter: ({ children }: { children: React.ReactNode }) => (
+      React.createElement('div', { 'data-testid': 'mock-browser-router' }, children)
+    ),
+    useNavigate: () => vi.fn(),
+    useLocation: () => ({ pathname: '/', search: '', hash: '', state: null, key: 'default' }),
+    Link: ({ children, to, ...props }: any) => (
+      React.createElement('a', { href: to, ...props }, children)
+    )
+  }
+})
+
+// Mock toast components globally  
+vi.mock('@/components/ui/toast', () => ({
+  ToastProvider: ({ children }: { children: React.ReactNode }) => (
+    React.createElement('div', { 'data-testid': 'mock-toast-provider' }, children)
+  ),
+  useToast: () => ({
+    toast: vi.fn(),
+    dismiss: vi.fn(),
+    toasts: []
+  })
+}))
+
+// Mock CSS imports
+vi.mock('react-js-cron/dist/styles.css', () => ({})) 

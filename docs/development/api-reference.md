@@ -1154,6 +1154,540 @@ PUT /config/agents/{agent_name}
 }
 ```
 
+## Schedule Management
+
+> **Automated Agent Execution** - Schedule agents to run automatically using cron expressions
+
+The Schedule Management API enables automated execution of agents at specified intervals using cron expressions. Each schedule stores complete agent configuration and job data, ensuring consistent execution parameters over time.
+
+### Key Features
+- **Cron-based Scheduling:** Standard cron expressions with human-readable descriptions
+- **Complete Configuration Storage:** Full agent settings and job data stored with each schedule
+- **Timezone Support:** Schedule execution times with timezone awareness
+- **Status Management:** Enable, disable, and monitor schedule states
+- **Execution History:** Track schedule performance and troubleshoot issues
+- **Dashboard Integration:** View upcoming jobs and manage schedules
+
+### Data Models
+
+#### Schedule Object
+```typescript
+interface Schedule {
+  id: string;                          // Schedule UUID
+  user_id: string;                     // Owner user ID
+  title: string;                       // Schedule title
+  description?: string;                // Schedule description
+  agent_name: string;                  // Target agent identifier
+  cron_expression: string;             // Cron expression for scheduling
+  enabled: boolean;                    // Whether schedule is enabled
+  status: "enabled" | "disabled" | "paused" | "error";
+  next_run?: string;                   // Next scheduled execution time (ISO 8601)
+  last_run?: string;                   // Last execution time (ISO 8601)
+  created_at: string;                  // Creation timestamp (ISO 8601)
+  updated_at: string;                  // Last update timestamp (ISO 8601)
+  total_executions: number;            // Total number of executions
+  successful_executions: number;       // Number of successful executions
+  failed_executions: number;           // Number of failed executions
+  agent_config_data: AgentConfiguration; // Complete agent configuration
+}
+```
+
+#### Agent Configuration Object
+```typescript
+interface AgentConfiguration {
+  name: string;                        // Agent name
+  description?: string;                // Agent description
+  profile: "fast" | "balanced" | "quality" | "custom";
+  performance_mode: "speed" | "quality" | "balanced" | "power_save";
+  enabled: boolean;                    // Whether agent is enabled
+  result_format?: string;              // Expected result format
+  execution: ExecutionConfig;          // Execution configuration
+  model: ModelConfig;                  // Model configuration
+  logging: LoggingConfig;              // Logging configuration
+  security: SecurityConfig;            // Security configuration
+  job_data: Record<string, any>;       // Job data to be passed to the agent
+  custom_settings: Record<string, any>; // Custom configuration settings
+}
+```
+
+### Create Schedule
+```http
+POST /schedules
+```
+
+**Description:** Create a new schedule with agent configuration and cron expression.
+
+**Authentication:** Required
+
+**Request Body:**
+```json
+{
+  "title": "Daily Data Processing",
+  "description": "Process daily analytics data at 9 AM",
+  "agent_name": "simple_prompt",
+  "cron_expression": "0 9 * * *",
+  "enabled": true,
+  "agent_config_data": {
+    "name": "simple_prompt",
+    "description": "Daily processing agent",
+    "profile": "balanced",
+    "performance_mode": "balanced",
+    "enabled": true,
+    "result_format": "json",
+    "execution": {
+      "timeout_seconds": 300,
+      "max_retries": 3,
+      "enable_caching": true
+    },
+    "model": {
+      "temperature": 0.7,
+      "max_tokens": 2000
+    },
+    "logging": {
+      "log_level": "INFO",
+      "enable_performance_logging": true
+    },
+    "security": {
+      "enable_input_validation": true,
+      "rate_limit_per_minute": 60
+    },
+    "job_data": {
+      "prompt": "Process today's analytics data",
+      "max_tokens": 1500
+    },
+    "custom_settings": {}
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "result": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "user_id": "user-123",
+    "title": "Daily Data Processing",
+    "description": "Process daily analytics data at 9 AM",
+    "agent_name": "simple_prompt",
+    "cron_expression": "0 9 * * *",
+    "enabled": true,
+    "status": "enabled",
+    "next_run": "2024-01-15T09:00:00Z",
+    "last_run": null,
+    "created_at": "2024-01-10T08:30:00Z",
+    "updated_at": "2024-01-10T08:30:00Z",
+    "total_executions": 0,
+    "successful_executions": 0,
+    "failed_executions": 0,
+    "agent_config_data": { /* Full configuration object */ }
+  },
+  "message": "Schedule 'Daily Data Processing' created successfully",
+  "error": null,
+  "metadata": {
+    "schedule_id": "550e8400-e29b-41d4-a716-446655440000",
+    "next_run": "2024-01-15T09:00:00Z",
+    "cron_description": "At 09:00 every day",
+    "endpoint": "create_schedule"
+  }
+}
+```
+
+### List Schedules
+```http
+GET /schedules
+```
+
+**Description:** List user's schedules with optional filtering and pagination.
+
+**Authentication:** Required
+
+**Query Parameters:**
+- `enabled` (boolean, optional): Filter by enabled status
+- `agent_name` (string, optional): Filter by agent name
+- `limit` (integer, optional): Maximum number of schedules to return (1-100, default: 50)
+- `offset` (integer, optional): Number of schedules to skip (default: 0)
+
+**Response:**
+```json
+{
+  "success": true,
+  "result": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "title": "Daily Data Processing",
+      "agent_name": "simple_prompt",
+      "cron_expression": "0 9 * * *",
+      "enabled": true,
+      "status": "enabled",
+      "next_run": "2024-01-15T09:00:00Z",
+      "total_executions": 12,
+      "successful_executions": 11,
+      "failed_executions": 1,
+      "created_at": "2024-01-10T08:30:00Z"
+    }
+  ],
+  "message": "Schedules retrieved successfully",
+  "error": null,
+  "metadata": {
+    "total_count": 1,
+    "limit": 50,
+    "offset": 0,
+    "has_more": false,
+    "endpoint": "list_schedules"
+  }
+}
+```
+
+### Get Schedule
+```http
+GET /schedules/{schedule_id}
+```
+
+**Description:** Get detailed information about a specific schedule.
+
+**Authentication:** Required
+
+**Path Parameters:**
+- `schedule_id` (string): Schedule UUID
+
+**Response:**
+```json
+{
+  "success": true,
+  "result": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "user_id": "user-123",
+    "title": "Daily Data Processing",
+    "description": "Process daily analytics data at 9 AM",
+    "agent_name": "simple_prompt",
+    "cron_expression": "0 9 * * *",
+    "enabled": true,
+    "status": "enabled",
+    "next_run": "2024-01-15T09:00:00Z",
+    "last_run": "2024-01-14T09:00:00Z",
+    "created_at": "2024-01-10T08:30:00Z",
+    "updated_at": "2024-01-14T09:05:00Z",
+    "total_executions": 12,
+    "successful_executions": 11,
+    "failed_executions": 1,
+    "agent_config_data": { /* Full configuration object */ }
+  },
+  "message": "Schedule retrieved successfully",
+  "error": null,
+  "metadata": {
+    "cron_description": "At 09:00 every day",
+    "success_rate": 91.67,
+    "endpoint": "get_schedule"
+  }
+}
+```
+
+### Update Schedule
+```http
+PUT /schedules/{schedule_id}
+```
+
+**Description:** Update an existing schedule. Only provided fields will be updated.
+
+**Authentication:** Required
+
+**Path Parameters:**
+- `schedule_id` (string): Schedule UUID
+
+**Request Body (all fields optional):**
+```json
+{
+  "title": "Updated Daily Processing",
+  "description": "Updated description",
+  "cron_expression": "0 10 * * *",
+  "enabled": false,
+  "agent_config_data": {
+    "job_data": {
+      "prompt": "Updated prompt",
+      "max_tokens": 2000
+    }
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "result": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "title": "Updated Daily Processing",
+    "cron_expression": "0 10 * * *",
+    "enabled": false,
+    "status": "disabled",
+    "next_run": null,
+    "updated_at": "2024-01-15T10:30:00Z"
+    /* ... other fields ... */
+  },
+  "message": "Schedule updated successfully",
+  "error": null,
+  "metadata": {
+    "updated_fields": ["title", "cron_expression", "enabled"],
+    "cron_description": "At 10:00 every day",
+    "endpoint": "update_schedule"
+  }
+}
+```
+
+### Delete Schedule
+```http
+DELETE /schedules/{schedule_id}
+```
+
+**Description:** Permanently delete a schedule. This action cannot be undone.
+
+**Authentication:** Required
+
+**Path Parameters:**
+- `schedule_id` (string): Schedule UUID
+
+**Response:**
+```json
+{
+  "success": true,
+  "result": {
+    "message": "Schedule deleted successfully",
+    "schedule_id": "550e8400-e29b-41d4-a716-446655440000"
+  },
+  "message": "Schedule 'Daily Data Processing' deleted successfully",
+  "error": null,
+  "metadata": {
+    "schedule_id": "550e8400-e29b-41d4-a716-446655440000",
+    "endpoint": "delete_schedule"
+  }
+}
+```
+
+### Enable Schedule
+```http
+POST /schedules/{schedule_id}/enable
+```
+
+**Description:** Enable a disabled schedule and calculate next run time.
+
+**Authentication:** Required
+
+**Path Parameters:**
+- `schedule_id` (string): Schedule UUID
+
+**Response:**
+```json
+{
+  "success": true,
+  "result": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "enabled": true,
+    "status": "enabled",
+    "next_run": "2024-01-16T09:00:00Z",
+    "updated_at": "2024-01-15T14:30:00Z"
+    /* ... other fields ... */
+  },
+  "message": "Schedule enabled successfully",
+  "error": null,
+  "metadata": {
+    "next_run": "2024-01-16T09:00:00Z",
+    "endpoint": "enable_schedule"
+  }
+}
+```
+
+### Disable Schedule
+```http
+POST /schedules/{schedule_id}/disable
+```
+
+**Description:** Disable an enabled schedule and clear next run time.
+
+**Authentication:** Required
+
+**Path Parameters:**
+- `schedule_id` (string): Schedule UUID
+
+**Response:**
+```json
+{
+  "success": true,
+  "result": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "enabled": false,
+    "status": "disabled",
+    "next_run": null,
+    "updated_at": "2024-01-15T14:30:00Z"
+    /* ... other fields ... */
+  },
+  "message": "Schedule disabled successfully",
+  "error": null,
+  "metadata": {
+    "endpoint": "disable_schedule"
+  }
+}
+```
+
+### Get Upcoming Jobs
+```http
+GET /schedules/upcoming-jobs
+```
+
+**Description:** Get upcoming scheduled jobs for dashboard display.
+
+**Authentication:** Required
+
+**Query Parameters:**
+- `limit` (integer, optional): Maximum number of upcoming jobs to return (1-50, default: 10)
+- `hours_ahead` (integer, optional): Hours ahead to look for upcoming jobs (1-168, default: 24)
+
+**Response:**
+```json
+{
+  "success": true,
+  "result": [
+    {
+      "schedule_id": "550e8400-e29b-41d4-a716-446655440000",
+      "title": "Daily Data Processing",
+      "agent_name": "simple_prompt",
+      "cron_expression": "0 9 * * *",
+      "next_run": "2024-01-16T09:00:00Z",
+      "enabled": true,
+      "time_until_run": "in 18 hours",
+      "description": "Process daily analytics data at 9 AM"
+    }
+  ],
+  "message": "Upcoming jobs retrieved successfully",
+  "error": null,
+  "metadata": {
+    "total_upcoming": 1,
+    "hours_ahead": 24,
+    "endpoint": "get_upcoming_jobs"
+  }
+}
+```
+
+### Get Schedule History
+```http
+GET /schedules/{schedule_id}/history
+```
+
+**Description:** Get execution history for a specific schedule.
+
+**Authentication:** Required
+
+**Path Parameters:**
+- `schedule_id` (string): Schedule UUID
+
+**Query Parameters:**
+- `limit` (integer, optional): Maximum number of history records to return (1-200, default: 50)
+- `offset` (integer, optional): Number of records to skip (default: 0)
+- `status` (string, optional): Filter by job status (completed, failed, running, pending)
+
+**Response:**
+```json
+{
+  "success": true,
+  "result": [
+    {
+      "schedule_id": "550e8400-e29b-41d4-a716-446655440000",
+      "job_id": "job-456",
+      "execution_time": "2024-01-14T09:00:00Z",
+      "status": "completed",
+      "duration_seconds": 45.2,
+      "error_message": null,
+      "result_preview": "Successfully processed 1,234 records..."
+    },
+    {
+      "schedule_id": "550e8400-e29b-41d4-a716-446655440000",
+      "job_id": "job-455",
+      "execution_time": "2024-01-13T09:00:00Z",
+      "status": "failed",
+      "duration_seconds": 12.8,
+      "error_message": "API timeout after 300 seconds",
+      "result_preview": null
+    }
+  ],
+  "message": "Schedule history retrieved successfully",
+  "error": null,
+  "metadata": {
+    "total_count": 12,
+    "limit": 50,
+    "offset": 0,
+    "has_more": false,
+    "schedule_title": "Daily Data Processing",
+    "endpoint": "get_schedule_history"
+  }
+}
+```
+
+### Cron Expression Examples
+
+Common cron expressions for scheduling:
+
+| Expression | Description | Next Run (Example) |
+|------------|-------------|-------------------|
+| `0 9 * * *` | Every day at 9:00 AM | Daily at 09:00 |
+| `0 */6 * * *` | Every 6 hours | Every 6 hours |
+| `0 9 * * 1` | Every Monday at 9:00 AM | Mondays at 09:00 |
+| `0 9 1 * *` | First day of every month at 9:00 AM | Monthly on 1st at 09:00 |
+| `0 9 * * 1-5` | Every weekday at 9:00 AM | Weekdays at 09:00 |
+| `*/15 * * * *` | Every 15 minutes | Every 15 minutes |
+| `0 0 * * 0` | Every Sunday at midnight | Sundays at 00:00 |
+
+### Schedule Error Handling
+
+#### Validation Errors
+```json
+{
+  "success": false,
+  "result": null,
+  "message": "Validation failed with 2 errors",
+  "error": "cron_expression: Invalid cron expression format; title: field required",
+  "metadata": {
+    "error_type": "validation_error",
+    "validation_errors": [
+      {
+        "loc": ["cron_expression"],
+        "msg": "Invalid cron expression format",
+        "type": "value_error.invalid_cron"
+      }
+    ]
+  }
+}
+```
+
+#### Schedule Not Found
+```json
+{
+  "success": false,
+  "result": null,
+  "message": "Schedule not found",
+  "error": "Schedule with ID '550e8400-e29b-41d4-a716-446655440000' not found",
+  "metadata": {
+    "error_code": "SCHEDULE_NOT_FOUND",
+    "schedule_id": "550e8400-e29b-41d4-a716-446655440000",
+    "suggestion": "Check schedule ID or use GET /schedules to list available schedules"
+  }
+}
+```
+
+#### Agent Configuration Errors
+```json
+{
+  "success": false,
+  "result": null,
+  "message": "Agent configuration invalid",
+  "error": "Agent 'unknown_agent' not found in system",
+  "metadata": {
+    "error_code": "AGENT_NOT_FOUND",
+    "agent_name": "unknown_agent",
+    "suggestion": "Check available agents using GET /agents endpoint"
+  }
+}
+```
+
 ## Error Codes & HTTP Status Codes
 
 | HTTP Code | Error Type | Description | Example |
@@ -1162,6 +1696,8 @@ PUT /config/agents/{agent_name}
 | `400` | `AgentDisabledError` | Agent is disabled or has errors | Agent 'my_agent' is disabled |
 | `503` | `AgentNotLoadedError` | Agent exists but not loaded | Agent 'my_agent' is not currently loaded |
 | `400` | `ValidationError` | Job data validation failed | Required field 'prompt' missing |
+| `404` | `ScheduleNotFoundError` | Schedule doesn't exist | Schedule with ID 'xyz' not found |
+| `400` | `CronValidationError` | Invalid cron expression | Invalid cron expression format |
 | `401` | `AuthenticationError` | Invalid or missing token | Authorization header required |
 | `403` | `AuthorizationError` | Access denied | User not authorized for this operation |
 | `429` | `RateLimitError` | Too many requests | Rate limit exceeded |
@@ -1173,6 +1709,13 @@ Each agent error includes helpful suggestions:
 - **AgentNotFoundError:** "Check available agents using GET /agents endpoint"
 - **AgentDisabledError:** "Agent is not enabled or has load errors. Check agent status or contact administrator."
 - **AgentNotLoadedError:** "Agent exists but is not currently loaded. Try again later or contact administrator."
+
+### Schedule Error Suggestions
+
+Each schedule error includes helpful suggestions:
+- **ScheduleNotFoundError:** "Check schedule ID or use GET /schedules to list available schedules"
+- **CronValidationError:** "Use standard cron format (minute hour day month weekday) or check cron expression syntax"
+- **AgentConfigurationError:** "Verify agent exists and configuration data matches agent requirements"
 
 ## Rate Limiting
 
@@ -1195,6 +1738,28 @@ curl http://localhost:8000/agents
 
 # Get agent schema for form generation
 curl http://localhost:8000/agents/simple_prompt/schema
+
+# Create a schedule
+curl -X POST http://localhost:8000/schedules \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Test Schedule",
+    "agent_name": "simple_prompt",
+    "cron_expression": "0 9 * * *",
+    "agent_config_data": {
+      "name": "simple_prompt",
+      "job_data": {"prompt": "Hello world", "max_tokens": 100}
+    }
+  }'
+
+# List schedules
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  http://localhost:8000/schedules
+
+# Get upcoming jobs
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  http://localhost:8000/schedules/upcoming-jobs
 
 # Validate job data
 curl -X POST http://localhost:8000/jobs/validate \

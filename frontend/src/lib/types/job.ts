@@ -3,6 +3,8 @@
 
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
 
+export type ExecutionSource = 'manual' | 'scheduled';
+
 export interface Job {
   id: string;
   status: JobStatus;
@@ -22,6 +24,8 @@ export interface Job {
   metadata?: Record<string, unknown>;
   progress?: JobProgress;
   execution_time_ms?: number;
+  execution_source?: ExecutionSource; // Source of job execution (manual or scheduled)
+  schedule_id?: string | null; // ID of the schedule that created this job (NULL for manual jobs)
 }
 
 export interface CreateJobRequest {

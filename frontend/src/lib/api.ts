@@ -455,6 +455,94 @@ export const api = {
     },
   },
 
+  // Schedule management
+  schedules: {
+    // Get all schedules
+    getAll: async (): Promise<any[]> => {
+      const response = await apiClient.get<ApiResponse<any[]>>('/schedules/');
+      const result = extractApiResult(response.data);
+      return result || [];
+    },
+
+    // Get schedule by ID
+    getById: async (id: string): Promise<any> => {
+      const response = await apiClient.get<ApiResponse<any>>(`/schedules/${id}`);
+      return extractApiResult(response.data);
+    },
+
+    // Create new schedule
+    create: async (scheduleData: any): Promise<any> => {
+      const response = await apiClient.post<ApiResponse<any>>('/schedules/', scheduleData);
+      return response.data;
+    },
+
+    // Update schedule
+    update: async (id: string, scheduleData: any): Promise<any> => {
+      const response = await apiClient.put<ApiResponse<any>>(`/schedules/${id}`, scheduleData);
+      return extractApiResult(response.data);
+    },
+
+    // Delete schedule
+    delete: async (id: string): Promise<void> => {
+      await apiClient.delete(`/schedules/${id}`);
+    },
+
+    // Enable schedule
+    enable: async (id: string): Promise<any> => {
+      const response = await apiClient.post<ApiResponse<any>>(`/schedules/${id}/enable`);
+      return extractApiResult(response.data);
+    },
+
+    // Disable schedule
+    disable: async (id: string): Promise<any> => {
+      const response = await apiClient.post<ApiResponse<any>>(`/schedules/${id}/disable`);
+      return extractApiResult(response.data);
+    },
+
+    // Run schedule immediately
+    runNow: async (id: string): Promise<any> => {
+      const response = await apiClient.post<ApiResponse<any>>(`/schedules/${id}/run-now`);
+      return extractApiResult(response.data);
+    },
+
+    // Get upcoming jobs for a schedule
+    getUpcomingJobs: async (scheduleId: string, limit: number = 10): Promise<any[]> => {
+      const response = await apiClient.get<ApiResponse<{ jobs: any[] }>>(`/schedules/${scheduleId}/upcoming`, {
+        params: { limit }
+      });
+      const result = extractApiResult(response.data);
+      return result.jobs || [];
+    },
+
+    // Get schedule history
+    getHistory: async (scheduleId: string, limit: number = 50, offset: number = 0): Promise<{ jobs: any[]; total_count: number }> => {
+      const response = await apiClient.get<ApiResponse<any[]>>(`/schedules/${scheduleId}/history`, {
+        params: { limit, offset }
+      });
+      const result = extractApiResult(response.data);
+      
+      // Backend follows unified ApiResponse pattern:
+      // - result: Array of ScheduleExecutionHistory objects directly
+      // - metadata.count: Number of records returned
+      const jobs = Array.isArray(result) ? result : [];
+      const totalCount = (response.data.metadata?.count as number) || jobs.length;
+      
+      return { 
+        jobs, 
+        total_count: totalCount 
+      };
+    },
+
+    // Get upcoming jobs for all schedules
+    getAllUpcoming: async (limit: number = 10): Promise<any[]> => {
+      const response = await apiClient.get<ApiResponse<any[]>>('/schedules/upcoming', {
+        params: { limit }
+      });
+      const result = extractApiResult(response.data);
+      return result || [];
+    },
+  },
+
   // Authentication
   auth: {
     // Login

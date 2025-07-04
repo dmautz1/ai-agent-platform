@@ -7,6 +7,8 @@ import AuthPage from './pages/auth';
 import DashboardPage from './pages/index';
 import AgentDirectoryPage from './pages/AgentDirectory';
 import JobDetails from './pages/JobDetails';
+import ScheduledJobs from './pages/ScheduledJobs';
+import ScheduleHistory from './pages/ScheduleHistory';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
@@ -52,6 +54,22 @@ const AppContent: React.FC = () => {
         element={
           <ProtectedRoute>
             <AgentDirectoryPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/scheduled-jobs" 
+        element={
+          <ProtectedRoute>
+            <ScheduledJobs />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/schedule-history/:scheduleId" 
+        element={
+          <ProtectedRoute>
+            <ScheduleHistory />
           </ProtectedRoute>
         } 
       />

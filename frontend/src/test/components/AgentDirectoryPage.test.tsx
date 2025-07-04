@@ -30,6 +30,11 @@ vi.mock('../../lib/responsive', () => ({
   responsiveSpacing: {
     component: 'space-y-6',
   },
+  touchButtonSizes: {
+    sm: 'h-10 px-4 sm:h-8 sm:px-3',
+    default: 'h-12 px-6 sm:h-9 sm:px-4',
+    lg: 'h-14 px-8 sm:h-10 sm:px-6',
+  },
 }));
 
 // Mock the AgentDirectory component - note that it's now lazy loaded
@@ -107,8 +112,8 @@ describe('AgentDirectoryPage', () => {
       expect(screen.getByTestId('agent-directory')).toBeInTheDocument();
     });
     
-    // Check that the page has meaningful content
-    expect(screen.getByText('Browse and select AI agents')).toBeInTheDocument();
+    // Check that the page has meaningful content that actually exists
+    expect(screen.getByText('AI Agent Platform')).toBeInTheDocument();
     expect(screen.getByText('Agent Directory')).toBeInTheDocument();
   });
 

@@ -5,16 +5,15 @@ import { type Job } from '@/lib/api';
 import type { AgentInfo } from '@/lib/types';
 import { useJobPolling } from '@/lib/polling';
 import { useToast } from '@/components/ui/toast';
-import { useBreakpoint, responsivePadding, responsiveSpacing, touchButtonSizes } from '@/lib/responsive';
+import { responsivePadding, responsiveSpacing } from '@/lib/responsive';
 import JobList from '@/components/JobList';
 import { JobCreationModal } from '@/components/JobCreationModal';
-import { ThemeSwitcher } from '@/components/ThemeSwitcher';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Plus, Activity, Clock, CheckCircle, XCircle, User, Wifi, WifiOff, Search, Pause, Play } from 'lucide-react';
-import { StatsGridLoading } from '@/components/ui/loading';
-import { ErrorMessage, AccessDeniedError } from '@/components/ui/error';
+import { Card, CardContent } from '@/components/ui/card';
+import { AccessDeniedError } from '@/components/ui/error';
 import { cn } from '@/lib/utils';
+import UpcomingJobsSection from '@/components/dashboard/UpcomingJobsSection';
+import StatsOverviewSection from '@/components/dashboard/StatsOverviewSection';
+import AppHeader from '@/components/common/AppHeader';
 
 // Simple localStorage helper for recent agents
 const RECENT_AGENTS_KEY = 'recent_agents';
@@ -35,11 +34,10 @@ const addRecentAgent = (agentId: string) => {
 };
 
 export const DashboardPage: React.FC = () => {
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const toast = useToast();
-  const { isMobile } = useBreakpoint();
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
@@ -49,11 +47,13 @@ export const DashboardPage: React.FC = () => {
   });
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>('');
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   const [showAgentDirectory, setShowAgentDirectory] = useState(false);
   const [recentAgents, setRecentAgents] = useState<string[]>([]);
+  
+  // Force refresh counter for upcoming jobs
+  const [upcomingJobsRefreshCounter, setUpcomingJobsRefreshCounter] = useState(0);
 
   // Calculate stats from jobs array
   const updateStats = useCallback((jobsData: Job[]) => {
@@ -72,7 +72,6 @@ export const DashboardPage: React.FC = () => {
     setJobs(updatedJobs);
     updateStats(updatedJobs);
     setLoading(false);
-    setError('');
   }, [updateStats]);
 
   // Initialize job polling
@@ -111,7 +110,7 @@ export const DashboardPage: React.FC = () => {
 
     // Handle polling errors
     if (pollingState.error) {
-      setError(pollingState.error);
+      console.error('Polling error:', pollingState.error);
     }
   }, [searchParams, setSearchParams, pollingState.error]);
 
@@ -131,8 +130,9 @@ export const DashboardPage: React.FC = () => {
 
   const handleRefresh = async () => {
     setLoading(true);
-    setError('');
     await forceUpdate();
+    // Also refresh upcoming jobs
+    setUpcomingJobsRefreshCounter(prev => prev + 1);
     setLoading(false);
   };
 
@@ -173,142 +173,6 @@ export const DashboardPage: React.FC = () => {
     setShowAgentDirectory(false);
   };
 
-  const StatCard: React.FC<{ 
-    title: string; 
-    value: number; 
-    icon: React.ReactNode; 
-    color: string;
-  }> = ({ title, value, icon, color }) => (
-    <Card className="touch-manipulation">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium leading-none">{title}</CardTitle>
-        <div className={`${color}`}>{icon}</div>
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold tabular-nums">{value}</div>
-      </CardContent>
-    </Card>
-  );
-
-  // Mobile header component
-  const MobileHeader: React.FC = () => (
-    <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className={cn(responsivePadding.section, "py-3 sm:py-4")}>
-        <div className="flex items-center justify-between">
-          {/* Mobile menu and title */}
-          <div className="flex items-center gap-3">
-            <div>
-              <h1 className="text-xl font-bold sm:text-2xl">AI Agent Platform</h1>
-              <p className="text-xs text-muted-foreground sm:text-sm">
-                Job Management Dashboard
-              </p>
-            </div>
-          </div>
-          
-          {/* Mobile actions */}
-          <div className="flex items-center gap-2 sm:gap-4">
-            {/* Agent Directory button */}
-            <Button 
-              variant="outline"
-              size="sm" 
-              className={cn(
-                "flex items-center gap-2 touch-manipulation",
-                touchButtonSizes.sm
-              )} 
-              onClick={() => navigate('/agent-directory')}
-            >
-              <Search className="h-4 w-4" />
-              <span className="hidden sm:inline">Agents</span>
-            </Button>
-            
-            {/* Create job button */}
-            <Button 
-              size="sm" 
-              className={cn(
-                "flex items-center gap-2 touch-manipulation",
-                touchButtonSizes.sm
-              )} 
-              onClick={handleCreateJob}
-            >
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">New Job</span>
-              <span className="sm:hidden">New</span>
-            </Button>
-            
-            {/* Theme switcher */}
-            <ThemeSwitcher />
-            
-            {/* User menu */}
-            <div className="flex items-center gap-2 px-2 py-1 rounded-lg border sm:px-3 sm:py-2">
-              <User className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium max-w-[100px] truncate sm:max-w-none">
-                {user?.email}
-              </span>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={signOut}
-                className="h-6 px-2 text-xs sm:ml-2"
-              >
-                Sign Out
-              </Button>
-            </div>
-          </div>
-        </div>
-        
-        {/* Connection status with pause/start control */}
-        <div className="mt-3 flex items-center justify-between sm:mt-4">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            {pollingState.error ? (
-              <WifiOff className="h-3 w-3 text-red-500" />
-            ) : pollingState.isPaused ? (
-              <Pause className="h-3 w-3 text-orange-500" />
-            ) : (
-              <Wifi className="h-3 w-3 text-green-500" />
-            )}
-            <span className="truncate">
-              {pollingState.error ? 'Connection Issues' : 
-               pollingState.isPaused ? 'Auto-refresh paused' :
-               pollingState.lastUpdate ? `Updated: ${pollingState.lastUpdate.toLocaleTimeString()}` :
-               'Connecting...'}
-            </span>
-            {pollingState.isPolling && !pollingState.isPaused && (
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-            )}
-            
-            {/* Pause/Start button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleTogglePolling}
-              className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
-              title={pollingState.isPaused ? "Start auto-refresh" : "Pause auto-refresh"}
-            >
-              {pollingState.isPaused ? (
-                <Play className="h-3 w-3" />
-              ) : (
-                <Pause className="h-3 w-3" />
-              )}
-            </Button>
-          </div>
-          
-          {/* Stats summary on mobile */}
-          {!loading && !error && isMobile && (
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>{stats.total} jobs</span>
-              {stats.running > 0 && (
-                <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                  {stats.running} running
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </header>
-  );
-
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
@@ -326,61 +190,29 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-      <MobileHeader />
+      <AppHeader onCreateJob={handleCreateJob} />
 
       {/* Main Content */}
       <main className={cn(responsivePadding.section, responsiveSpacing.component)}>
         <div className="space-y-6 sm:space-y-8">
-          {/* Stats Grid - Responsive */}
-          <div className="grid gap-3 grid-cols-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-5">
-            {loading ? (
-              <StatsGridLoading count={5} />
-            ) : error && !pollingState.lastUpdate ? (
-              <div className="col-span-full">
-                <ErrorMessage
-                  title="Failed to Load Statistics"
-                  message={error}
-                  action={{
-                    label: 'Retry',
-                    onClick: handleRefresh
-                  }}
-                />
-              </div>
-            ) : (
-              <>
-                <StatCard
-                  title="Total Jobs"
-                  value={stats.total}
-                  icon={<Activity className="h-4 w-4" />}
-                  color="text-blue-600"
-                />
-                <StatCard
-                  title="Pending"
-                  value={stats.pending}
-                  icon={<Clock className="h-4 w-4" />}
-                  color="text-yellow-600"
-                />
-                <StatCard
-                  title="Running"
-                  value={stats.running}
-                  icon={<Activity className="h-4 w-4" />}
-                  color="text-blue-600"
-                />
-                <StatCard
-                  title="Completed"
-                  value={stats.completed}
-                  icon={<CheckCircle className="h-4 w-4" />}
-                  color="text-green-600"
-                />
-                <StatCard
-                  title="Failed"
-                  value={stats.failed}
-                  icon={<XCircle className="h-4 w-4" />}
-                  color="text-red-600"
-                />
-              </>
-            )}
-          </div>
+          {/* Stats Overview Section */}
+          <StatsOverviewSection
+            stats={stats}
+            loading={loading}
+            pollingState={pollingState}
+            onRefresh={handleRefresh}
+            onTogglePolling={handleTogglePolling}
+          />
+
+          {/* Upcoming Scheduled Jobs Section */}
+          <UpcomingJobsSection
+            limit={5}
+            showActions={true}
+            className="transition-all duration-200"
+            onRefresh={handleRefresh}
+            isRefreshing={pollingState.isPolling}
+            forceRefresh={upcomingJobsRefreshCounter}
+          />
 
           {/* Job List with real-time updates */}
           <JobList 
