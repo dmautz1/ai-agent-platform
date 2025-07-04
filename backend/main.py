@@ -31,6 +31,7 @@ from database import get_database_operations, check_database_health
 from models import JobCreateRequest, JobResponse, ApiResponse
 from utils.responses import create_error_response
 from static_files import setup_static_file_serving
+from services.scheduler import start_scheduler_service, stop_scheduler_service
 
 # Import all route modules
 from routes import (
@@ -41,6 +42,7 @@ from routes import (
     llm_providers_router
 )
 from routes.jobs import router as jobs_router
+from routes.schedules import router as schedules_router
 
 # Initialize settings and validate required configuration
 settings = get_settings()
@@ -120,6 +122,10 @@ async def lifespan(app: FastAPI):
         await start_job_pipeline()
         logger.info("Job processing pipeline started")
         
+        # Start scheduler service
+        await start_scheduler_service()
+        logger.info("Scheduler service started")
+        
     except Exception as e:
         logger.error("Failed to initialize agent framework", exception=e)
         raise
@@ -137,6 +143,13 @@ async def lifespan(app: FastAPI):
         logger.info("Job processing pipeline stopped")
     except Exception as e:
         logger.error("Failed to stop job processing pipeline", exception=e)
+    
+    # Stop scheduler service
+    try:
+        await stop_scheduler_service()
+        logger.info("Scheduler service stopped")
+    except Exception as e:
+        logger.error("Failed to stop scheduler service", exception=e)
     
     log_shutdown_info()
     logger.info("Application shutdown completed")
@@ -178,6 +191,7 @@ app.include_router(agents_router)
 app.include_router(jobs_router)
 app.include_router(pipeline_router)
 app.include_router(llm_providers_router)
+app.include_router(schedules_router)
 
 # Set up static file serving (for production)
 setup_static_file_serving(app)

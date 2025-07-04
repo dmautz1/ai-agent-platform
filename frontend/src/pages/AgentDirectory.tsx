@@ -1,10 +1,10 @@
 import React, { Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useBreakpoint, responsivePadding, responsiveSpacing } from '@/lib/responsive';
+import { responsivePadding, responsiveSpacing, touchButtonSizes } from '@/lib/responsive';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, User, Loader2 } from 'lucide-react';
+import { User, Loader2, Home, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AgentInfo } from '@/lib/types';
 
@@ -27,7 +27,6 @@ const DirectoryLoader: React.FC = () => (
 export const AgentDirectoryPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const { isMobile } = useBreakpoint();
 
   const handleAgentSelect = (agent: AgentInfo) => {
     // Navigate to dashboard and trigger job creation with this agent
@@ -35,36 +34,52 @@ export const AgentDirectoryPage: React.FC = () => {
     navigate(`/?agent=${agent.identifier}`);
   };
 
-  const handleBackToDashboard = () => {
-    navigate('/');
-  };
-
-  // Mobile header component
-  const MobileHeader: React.FC = () => (
+  // Navigation header component
+  const NavigationHeader: React.FC = () => (
     <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className={cn(responsivePadding.section, "py-3 sm:py-4")}>
         <div className="flex items-center justify-between">
-          {/* Navigation and title */}
+          {/* Platform title and breadcrumb */}
           <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleBackToDashboard}
-              className="flex items-center gap-2 -ml-2"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              {!isMobile && <span>Dashboard</span>}
-            </Button>
             <div>
-              <h1 className="text-xl font-bold sm:text-2xl">Agent Directory</h1>
+              <h1 className="text-xl font-bold sm:text-2xl">AI Agent Platform</h1>
               <p className="text-xs text-muted-foreground sm:text-sm">
-                Browse and select AI agents
+                Agent Directory
               </p>
             </div>
           </div>
           
-          {/* Theme switcher and user menu */}
-          <div className="flex items-center gap-2">
+          {/* Navigation actions */}
+          <div className="flex items-center gap-2 sm:gap-4">
+            {/* Dashboard button */}
+            <Button 
+              variant="outline"
+              size="sm" 
+              className={cn(
+                "flex items-center gap-2 touch-manipulation",
+                touchButtonSizes.sm
+              )} 
+              onClick={() => navigate('/dashboard')}
+            >
+              <Home className="h-4 w-4" />
+              <span className="hidden sm:inline">Dashboard</span>
+            </Button>
+            
+            {/* Scheduled Jobs button */}
+            <Button 
+              variant="outline"
+              size="sm" 
+              className={cn(
+                "flex items-center gap-2 touch-manipulation",
+                touchButtonSizes.sm
+              )} 
+              onClick={() => navigate('/scheduled-jobs')}
+            >
+              <Calendar className="h-4 w-4" />
+              <span className="hidden sm:inline">Schedules</span>
+            </Button>
+            
+            {/* Theme switcher */}
             <ThemeSwitcher />
             
             {/* User menu */}
@@ -90,7 +105,7 @@ export const AgentDirectoryPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-      <MobileHeader />
+      <NavigationHeader />
 
       {/* Main Content */}
       <main className={cn(responsivePadding.section, responsiveSpacing.component)}>

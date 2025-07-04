@@ -81,6 +81,149 @@ The platform will be available at:
 - **Backend API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
 
+## 📅 Scheduling System
+
+The AI Agent Platform includes a powerful scheduling system that allows you to automate agent execution based on cron expressions with full timezone support.
+
+### Key Features
+
+- **Cron Expression Support**: Standard cron syntax with validation
+- **Timezone Aware**: Schedule jobs across different time zones
+- **Background Processing**: Automatic execution monitoring and job creation
+- **Schedule Management**: Full CRUD operations for schedules
+- **Execution Tracking**: Detailed statistics and execution history
+- **Immediate Execution**: Run scheduled jobs on-demand
+- **Error Handling**: Robust error handling with retry mechanisms
+
+### API Endpoints
+
+#### Schedule Management
+```bash
+# Create a new schedule
+POST /api/schedules/
+{
+  "title": "Daily Report Generation",
+  "description": "Generate daily reports every morning",
+  "agent_name": "report_generator",
+  "cron_expression": "0 9 * * *",
+  "timezone": "America/New_York",
+  "enabled": true,
+  "agent_config_data": {
+    "name": "report_generator",
+    "job_data": {
+      "report_type": "daily",
+      "include_charts": true
+    }
+  }
+}
+
+# List all schedules
+GET /api/schedules/
+
+# Get specific schedule
+GET /api/schedules/{schedule_id}
+
+# Update schedule
+PUT /api/schedules/{schedule_id}
+
+# Delete schedule
+DELETE /api/schedules/{schedule_id}
+```
+
+#### Schedule Control
+```bash
+# Enable a schedule
+POST /api/schedules/{schedule_id}/enable
+
+# Disable a schedule
+POST /api/schedules/{schedule_id}/disable
+
+# Run schedule immediately
+POST /api/schedules/{schedule_id}/run-now
+
+# Get execution history
+GET /api/schedules/{schedule_id}/history
+
+# Get schedule statistics
+GET /api/schedules/{schedule_id}/stats
+```
+
+### Usage Examples
+
+#### Create a Daily Schedule
+```python
+import requests
+
+schedule_data = {
+    "title": "Daily Data Processing",
+    "description": "Process daily data every morning at 8 AM EST",
+    "agent_name": "data_processor",
+    "cron_expression": "0 8 * * *",
+    "timezone": "America/New_York",
+    "enabled": True,
+    "agent_config_data": {
+        "name": "data_processor",
+        "job_data": {
+            "source": "database",
+            "output_format": "csv"
+        }
+    }
+}
+
+response = requests.post(
+    "http://localhost:8000/api/schedules/",
+    json=schedule_data,
+    headers={"Authorization": "Bearer your-token"}
+)
+```
+
+#### Common Cron Expressions
+```bash
+# Every minute
+* * * * *
+
+# Every hour at minute 0
+0 * * * *
+
+# Every day at 9:00 AM
+0 9 * * *
+
+# Every Monday at 10:00 AM
+0 10 * * 1
+
+# Every first day of month at midnight
+0 0 1 * *
+
+# Every weekday at 2:30 PM
+30 14 * * 1-5
+```
+
+### Background Scheduler Service
+
+The platform runs a background scheduler service that:
+- Monitors enabled schedules every 30 seconds
+- Creates jobs for schedules that are due
+- Updates next run times automatically
+- Handles timezone conversions
+- Provides error handling and logging
+- Tracks execution statistics
+- **Prevents duplicate execution** with atomic claim-and-update pattern
+
+#### Race Condition Prevention
+
+The scheduler implements several mechanisms to prevent duplicate job execution:
+
+- **Atomic Claiming**: Updates schedule `next_run` time before creating jobs
+- **Optimistic Locking**: Uses database conditional updates to prevent race conditions  
+- **Reduced Tolerance Window**: 30-second tolerance window minimizes overlap
+- **Duplicate Detection**: Only one scheduler instance can claim each schedule execution
+
+For high-concurrency deployments, consider adding a database unique constraint:
+```sql
+ALTER TABLE schedules ADD CONSTRAINT unique_schedule_execution 
+  UNIQUE (id, next_run);
+```
+
 ## 🔧 Core Features
 
 ### Self-Contained Agents
@@ -95,6 +238,15 @@ Agents inherit from `SelfContainedAgent` and automatically:
 - **Job Operations**: Retry, cancel, and rerun jobs
 - **Result Display**: Rich JSON result visualization
 - **Error Handling**: Comprehensive error tracking
+
+### Advanced Scheduling System
+- **Cron-based Scheduling**: Full cron expression support with validation
+- **Timezone Support**: Schedule jobs across different time zones
+- **Automatic Execution**: Background service monitors and executes due schedules
+- **Schedule Management**: Create, update, enable/disable, and delete schedules
+- **Execution History**: Track job executions with success/failure statistics
+- **Run Now**: Trigger immediate execution of scheduled jobs
+- **Real-time Monitoring**: Live status updates and execution tracking
 
 ### Multi-LLM Support
 Integrated support for:
@@ -160,4 +312,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - Built with [FastAPI](https://fastapi.tiangolo.com/) and [React](https://reactjs.org/)
 - Inspired by the need for simpler AI agent development
-- Thanks to all contributors and the open-source community
+- Thanks to all contributors and the open-source community 

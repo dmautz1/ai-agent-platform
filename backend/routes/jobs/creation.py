@@ -284,7 +284,9 @@ async def create_job(
             "title": request.title,
             "priority": request.priority,
             "tags": request.tags,
-            "status": "pending"
+            "status": "pending",
+            "schedule_id": None,  # Manual jobs have no associated schedule
+            "execution_source": "manual"  # Explicitly mark as manual execution
         }
         
         job = await db_ops.create_job(job_data)

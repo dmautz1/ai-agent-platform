@@ -37,6 +37,15 @@ Welcome to the AI Agent Platform documentation! This platform provides a complet
 - **Comprehensive Testing** - 95.3% backend, 98.6% frontend test coverage
 - **Deployment Ready** - Docker, DigitalOcean, Vercel support
 
+### Advanced Scheduling System
+- **Cron-based Scheduling** - Standard cron expressions with validation
+- **Timezone Support** - Schedule jobs across different time zones
+- **Background Processing** - Automatic execution monitoring and job creation
+- **Schedule Management** - Full CRUD operations with enable/disable controls
+- **Execution History** - Track job executions with detailed statistics
+- **Immediate Execution** - Run scheduled jobs on-demand
+- **Error Handling** - Robust error handling with retry mechanisms
+
 ## 🤖 AI Provider Integration
 
 ### Primary Providers

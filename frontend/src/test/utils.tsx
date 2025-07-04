@@ -1,11 +1,18 @@
 import React from 'react'
 import { render } from '@testing-library/react'
 import type { RenderOptions } from '@testing-library/react'
-import { BrowserRouter } from 'react-router-dom'
 import { vi, expect } from 'vitest'
 import type { Job } from '../lib/types'
 import type { ApiResponse } from '../lib/types/api'
-import { ToastProvider } from '../components/ui/toast'
+
+// Define mock components locally to ensure they work
+const BrowserRouter = ({ children }: { children: React.ReactNode }) => (
+  <div data-testid="mock-browser-router">{children}</div>
+)
+
+const ToastProvider = ({ children }: { children: React.ReactNode }) => (
+  <div data-testid="mock-toast-provider">{children}</div>
+)
 
 // ApiResponse helper functions for testing
 export function createMockApiResponse<T>(

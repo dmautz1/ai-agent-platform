@@ -6,8 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { CheckCircle, XCircle, Clock, PlayCircle, ChevronRight, RotateCcw, RefreshCw } from 'lucide-react';
-import { TableLoading, RefreshLoading } from '@/components/ui/loading';
+import { CheckCircle, XCircle, Clock, PlayCircle, ChevronRight, RotateCcw, RefreshCw, Calendar, User, Briefcase } from 'lucide-react';
+import { TableLoading } from '@/components/ui/loading';
 import { ErrorCard } from '@/components/ui/error';
 import { EmptyJobs } from '@/components/ui/empty-state';
 import { useToast } from '@/components/ui/toast';
@@ -28,6 +28,10 @@ interface JobListProps {
   refreshInterval?: number;
   /** Create job callback */
   onCreateJob?: () => void;
+  /** Whether the section is collapsible */
+  collapsible?: boolean;
+  /** Initial collapsed state if collapsible */
+  initiallyCollapsed?: boolean;
 }
 
 export const JobList: React.FC<JobListProps> = ({ 
@@ -37,13 +41,16 @@ export const JobList: React.FC<JobListProps> = ({
   onRefresh,
   isRefreshing: externalRefreshing,
   refreshInterval = 5000,
-  onCreateJob
+  onCreateJob,
+  collapsible = false,
+  initiallyCollapsed = false
 }) => {
   const [internalJobs, setInternalJobs] = useState<Job[]>([]);
   const [internalLoading, setInternalLoading] = useState(true);
   const [internalError, setInternalError] = useState<string>('');
   const [internalRefreshing, setInternalRefreshing] = useState(false);
   const [rerunningJobs, setRerunningJobs] = useState<Set<string>>(new Set());
+  const [isCollapsed, setIsCollapsed] = useState(initiallyCollapsed);
   const navigate = useNavigate();
   const { isMobile } = useBreakpoint();
   const toast = useToast();
@@ -199,6 +206,31 @@ export const JobList: React.FC<JobListProps> = ({
     }
   };
 
+  const getExecutionSourceBadge = (job: Job) => {
+    if (job.execution_source === 'scheduled') {
+      return (
+        <Badge 
+          variant="outline" 
+          className="flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+        >
+          <Calendar className="h-3 w-3" />
+          Scheduled
+        </Badge>
+      );
+    } else if (job.execution_source === 'manual') {
+      return (
+        <Badge 
+          variant="outline" 
+          className="flex items-center gap-1 text-xs bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100"
+        >
+          <User className="h-3 w-3" />
+          Manual
+        </Badge>
+      );
+    }
+    return null;
+  };
+
   const formatDate = (dateString: string, isMobile = false) => {
     const date = new Date(dateString);
     if (isMobile) {
@@ -275,6 +307,7 @@ export const JobList: React.FC<JobListProps> = ({
           <div className="flex items-center gap-2 flex-wrap">
             {getAgentIdentifierDisplay(getAgentIdentifierFromJob(job))}
             {getStatusBadge(job.status)}
+            {getExecutionSourceBadge(job)}
           </div>
           
           {/* Dates */}
@@ -360,107 +393,136 @@ export const JobList: React.FC<JobListProps> = ({
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 sm:pb-6">
-        <CardTitle className="text-lg sm:text-xl">Jobs Dashboard</CardTitle>
+        <div className="flex items-center gap-2">
+          <Briefcase className="h-5 w-5 text-blue-600" />
+          <CardTitle className="text-lg sm:text-xl">Jobs Dashboard</CardTitle>
+        </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-xs">
             {jobs.length} job{jobs.length !== 1 ? 's' : ''}
           </Badge>
-          <RefreshLoading
-            isRefreshing={refreshing}
-            onRefresh={() => fetchJobs(true)}
+          <Button
+            variant="outline"
             size="sm"
-          />
+            onClick={() => fetchJobs(true)}
+            disabled={refreshing}
+            className="h-7 px-2 text-xs"
+          >
+            <RefreshCw className={cn("h-3 w-3 mr-1", refreshing && "animate-spin")} />
+            Refresh
+          </Button>
+          {collapsible && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className="h-6 w-6 p-0"
+            >
+              <ChevronRight
+                className={cn(
+                  "h-4 w-4 transition-transform",
+                  !isCollapsed && "rotate-90"
+                )}
+              />
+            </Button>
+          )}
         </div>
       </CardHeader>
-      <CardContent>
-        {jobs.length === 0 ? (
-          <EmptyJobs 
-            onCreateJob={onCreateJob}
-            className="py-8"
-          />
-        ) : isMobile ? (
-          /* Mobile card layout */
-          <div className="space-y-3">
-            {jobs.map((job) => (
-              <MobileJobCard key={job.id} job={job} />
-            ))}
-          </div>
-        ) : (
-          /* Desktop table layout */
-          <div className={responsiveTable.container}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className={responsiveTable.header}>ID</TableHead>
-                  <TableHead className={responsiveTable.header}>Title</TableHead>
-                  <TableHead className={responsiveTable.header}>Agent Identifier</TableHead>
-                  <TableHead className={responsiveTable.header}>Status</TableHead>
-                  <TableHead className={responsiveTable.header}>Created</TableHead>
-                  <TableHead className={responsiveTable.header}>Updated</TableHead>
-                  <TableHead className={cn(responsiveTable.header, "text-right")}>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {jobs.map((job) => {
-                  const isRerunning = rerunningJobs.has(job.id);
-                  
-                  return (
-                    <TableRow key={job.id} className="hover:bg-muted/50 cursor-pointer" onClick={() => navigate(`/job/${job.id}`)}>
-                      <TableCell className={cn(responsiveTable.cell, "font-mono text-xs")}>
-                        {job.id.slice(0, 8)}...
-                      </TableCell>
-                      <TableCell className={cn(responsiveTable.cell, "font-medium")}>
-                        {getTitleFromJob(job)}
-                      </TableCell>
-                      <TableCell className={responsiveTable.cell}>
-                        {getAgentIdentifierDisplay(getAgentIdentifierFromJob(job))}
-                      </TableCell>
-                      <TableCell className={responsiveTable.cell}>
-                        {getStatusBadge(job.status)}
-                      </TableCell>
-                      <TableCell className={cn(responsiveTable.cell, "text-muted-foreground")}>
-                        {formatDate(job.created_at)}
-                      </TableCell>
-                      <TableCell className={cn(responsiveTable.cell, "text-muted-foreground")}>
-                        {formatDate(job.updated_at)}
-                      </TableCell>
-                      <TableCell className={cn(responsiveTable.cell, "text-right")}>
-                        <div className="flex gap-2 justify-end">
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/job/${job.id}`);
-                            }}
-                            className={touchButtonSizes.sm}
-                          >
-                            View Details
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => handleRerunJob(job, e)}
-                            disabled={isRerunning}
-                            className={cn(touchButtonSizes.sm, "flex-shrink-0")}
-                            title="Rerun this job with the same configuration"
-                          >
-                            {isRerunning ? (
-                              <RefreshCw className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <RotateCcw className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
+      {!isCollapsed && (
+        <CardContent>
+          {jobs.length === 0 ? (
+            <EmptyJobs 
+              onCreateJob={onCreateJob}
+              className="py-8"
+            />
+          ) : isMobile ? (
+            /* Mobile card layout */
+            <div className="space-y-3">
+              {jobs.map((job) => (
+                <MobileJobCard key={job.id} job={job} />
+              ))}
+            </div>
+          ) : (
+            /* Desktop table layout */
+            <div className={responsiveTable.container}>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className={responsiveTable.header}>ID</TableHead>
+                    <TableHead className={responsiveTable.header}>Title</TableHead>
+                    <TableHead className={responsiveTable.header}>Agent Identifier</TableHead>
+                    <TableHead className={responsiveTable.header}>Status</TableHead>
+                    <TableHead className={responsiveTable.header}>Source</TableHead>
+                    <TableHead className={responsiveTable.header}>Created</TableHead>
+                    <TableHead className={responsiveTable.header}>Updated</TableHead>
+                    <TableHead className={cn(responsiveTable.header, "text-right")}>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {jobs.map((job) => {
+                    const isRerunning = rerunningJobs.has(job.id);
+                    
+                    return (
+                      <TableRow key={job.id} className="hover:bg-muted/50 cursor-pointer" onClick={() => navigate(`/job/${job.id}`)}>
+                        <TableCell className={cn(responsiveTable.cell, "font-mono text-xs")}>
+                          {job.id.slice(0, 8)}...
+                        </TableCell>
+                        <TableCell className={cn(responsiveTable.cell, "font-medium")}>
+                          {getTitleFromJob(job)}
+                        </TableCell>
+                        <TableCell className={responsiveTable.cell}>
+                          {getAgentIdentifierDisplay(getAgentIdentifierFromJob(job))}
+                        </TableCell>
+                        <TableCell className={responsiveTable.cell}>
+                          {getStatusBadge(job.status)}
+                        </TableCell>
+                        <TableCell className={responsiveTable.cell}>
+                          {getExecutionSourceBadge(job)}
+                        </TableCell>
+                        <TableCell className={cn(responsiveTable.cell, "text-muted-foreground")}>
+                          {formatDate(job.created_at)}
+                        </TableCell>
+                        <TableCell className={cn(responsiveTable.cell, "text-muted-foreground")}>
+                          {formatDate(job.updated_at)}
+                        </TableCell>
+                        <TableCell className={cn(responsiveTable.cell, "text-right")}>
+                          <div className="flex gap-2 justify-end">
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/job/${job.id}`);
+                              }}
+                              className={touchButtonSizes.sm}
+                            >
+                              View Details
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => handleRerunJob(job, e)}
+                              disabled={isRerunning}
+                              className={cn(touchButtonSizes.sm, "flex-shrink-0")}
+                              title="Rerun this job with the same configuration"
+                            >
+                              {isRerunning ? (
+                                <RefreshCw className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <RotateCcw className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      )}
     </Card>
   );
 };

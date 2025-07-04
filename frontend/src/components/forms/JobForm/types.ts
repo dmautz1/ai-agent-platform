@@ -1,10 +1,17 @@
 import type { Control, FieldErrors } from 'react-hook-form';
 import type { FormFieldSchema } from '@/lib/types';
 
+// Edit mode configuration
+export interface EditMode {
+  scheduleId: string;
+  initialData: Record<string, unknown>;
+}
+
 // JobForm component types and interfaces
 export interface DynamicJobFormProps {
   agentId: string;
   onJobCreated: (jobId: string) => void;
+  editMode?: EditMode;
 }
 
 // Enhanced loading states
